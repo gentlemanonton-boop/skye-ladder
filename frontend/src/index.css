@@ -10,6 +10,12 @@ body {
   color: #111827;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Prevent iOS zoom on inputs */
+input[type="number"] {
+  font-size: 16px;
 }
 
 /* Wallet adapter overrides */
@@ -33,10 +39,10 @@ body {
   font-family: 'Inter', sans-serif !important;
 }
 
-@keyframes modal-in {
-  from { opacity: 0; transform: scale(0.95) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
-.animate-in {
-  animation: modal-in 0.2s ease-out;
+.animate-sheet {
+  animation: sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }

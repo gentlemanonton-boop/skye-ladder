@@ -38,32 +38,39 @@ function ActivityModal({ onClose }: { onClose: () => void }) {
   const { trades, loading } = useActivity();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50">
+      {/* Overlay — closes modal on tap */}
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      {/* Modal */}
-      <div
-        className="relative bg-white rounded-2xl shadow-elevated w-full max-w-md max-h-[70vh] flex flex-col overflow-hidden animate-in"
-        onClick={(e) => e.stopPropagation()}
+      {/* Bottom sheet */}
+      <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[20px] shadow-elevated flex flex-col animate-sheet"
+        style={{ height: "80vh", maxHeight: "80vh" }}
       >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-[15px] font-bold text-ink-primary">Activity</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
-            <svg className="w-4 h-4 text-ink-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <h2 className="text-[16px] font-bold text-ink-primary">Activity</h2>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+          >
+            <svg className="w-5 h-5 text-ink-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* Content */}
-        <div className="overflow-y-auto flex-1 px-2 py-2">
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-2 pb-[env(safe-area-inset-bottom,16px)]">
           {loading && trades.length === 0 && (
-            <p className="text-[13px] text-ink-tertiary text-center py-8">Loading trades...</p>
+            <p className="text-[14px] text-ink-tertiary text-center py-12">Loading trades...</p>
           )}
           {!loading && trades.length === 0 && (
-            <p className="text-[13px] text-ink-tertiary text-center py-8">No SKYE trades yet</p>
+            <p className="text-[14px] text-ink-tertiary text-center py-12">No SKYE trades yet</p>
           )}
           {trades.map((t) => (
             <a
@@ -71,27 +78,27 @@ function ActivityModal({ onClose }: { onClose: () => void }) {
               href={`https://solscan.io/tx/${t.signature}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-3 px-3 py-3.5 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-colors"
             >
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0 ${
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0 ${
                 t.type === "buy" ? "bg-skye-500" : "bg-rose-400"
               }`}>
                 {t.type === "buy" ? "B" : "S"}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-[13px] font-semibold text-ink-primary">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[14px] font-semibold text-ink-primary truncate">
                     {t.type === "buy" ? "+" : "-"}{formatTokens(t.skyeAmount, 0)} SKYE
                   </span>
-                  <span className="text-[12px] text-ink-tertiary tabular-nums">
+                  <span className="text-[12px] text-ink-tertiary tabular-nums flex-shrink-0">
                     {t.timestamp > 0 ? timeAgo(t.timestamp) : ""}
                   </span>
                 </div>
-                <span className="text-[12px] text-ink-tertiary">
+                <span className="text-[13px] text-ink-tertiary">
                   {t.type === "buy" ? "for" : "received"} {formatSol(t.solAmount, 4)} SOL
                 </span>
               </div>
-              <svg className="w-3.5 h-3.5 text-ink-faint flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-ink-faint flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
             </a>

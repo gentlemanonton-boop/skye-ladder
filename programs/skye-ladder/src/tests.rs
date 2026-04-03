@@ -1,16 +1,15 @@
 /// Comprehensive test suite for Skye Ladder — 50+ test cases.
 ///
-/// These tests exercise the full stack: math → positions → anti-bundle → pool_price,
+/// These tests exercise the full stack: math → positions → pool_price,
 /// simulating real user flows from launch through 15x+ appreciation.
 ///
 /// Test naming: test_{module}_{scenario}_{expected_outcome}
 #[cfg(test)]
 mod comprehensive {
-    use crate::anti_bundle;
     use crate::math::{calculate_unlocked_bps, effective_unlock_bps, sellable_tokens};
     use crate::pool_price;
     use crate::positions::{on_buy, on_sell};
-    use crate::state::{Position, WalletRecord, PRICE_SCALE, USD_SCALE, BPS_DENOMINATOR};
+    use crate::state::{Position, WalletRecord, PRICE_SCALE, BPS_DENOMINATOR};
     use anchor_lang::prelude::Pubkey;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -23,10 +22,6 @@ mod comprehensive {
 
     fn price_at_mult(entry: u64, mult: f64) -> u64 {
         ((entry as f64) * mult) as u64
-    }
-
-    fn usd(amount: f64) -> u64 {
-        (amount * USD_SCALE as f64) as u64
     }
 
     fn wallet() -> WalletRecord {
@@ -43,10 +38,10 @@ mod comprehensive {
 
     fn pos(entry_usd: f64, tokens: u64) -> Position {
         let ep = price(entry_usd);
-        let iusd = (tokens as f64 * entry_usd * USD_SCALE as f64) as u64;
+        let isol = (tokens as f64 * entry_usd) as u64;
         Position {
             entry_price: ep,
-            initial_usd: iusd,
+            initial_sol: isol,
             token_balance: tokens,
             unlocked_bps: 0,
             original_balance: tokens,
@@ -195,7 +190,7 @@ mod comprehensive {
     fn test_14_sellable_rounds_down() {
         let mut p = Position {
             entry_price: price(0.000003),
-            initial_usd: usd(3.0),
+            initial_sol: (333.0 * 0.000003) as u64,
             token_balance: 333, // odd number
             unlocked_bps: 0,
             original_balance: 333,
@@ -220,15 +215,15 @@ mod comprehensive {
     // 16–30: Position management (buy/sell/merge)
     // ═══════════════════════════════════════════════════════════════════════
 
-    // 16. Single buy creates a position with correct initial_usd
+    // 16. Single buy creates a position with correct initial_sol
     #[test]
-    fn test_16_single_buy_initial_usd() {
+    fn test_16_single_buy_initial_sol() {
         let mut w = wallet();
         let cp = price(0.000003);
         on_buy(&mut w, 1_000_000_000, cp).unwrap();
-        // initial_usd = 1B * 0.000003 = $3000 = 3_000_000_000 in USD_SCALE
-        let iusd = w.positions[0].initial_usd;
-        assert!(iusd >= 2_990_000_000 && iusd <= 3_010_000_000, "initial_usd={}", iusd);
+        // initial_sol = 1B * 0.000003 = 3000 (raw SOL value)
+        let isol = w.positions[0].initial_sol;
+        assert!(isol >= 2_990 && isol <= 3_010, "initial_sol={}", isol);
     }
 
     // 17. Two buys at same price merge
@@ -272,7 +267,7 @@ mod comprehensive {
         // Merged position has 1.5B tokens
         assert_eq!(w.positions[0].token_balance, 1_500_000_000);
         // Weighted avg entry: total_usd / total_tokens
-        // The merge uses: total_cost * PRICE_SCALE / (total_tokens * USD_SCALE)
+        // The merge uses: total_cost * PRICE_SCALE / total_tokens
         // This produces a weighted average entry price
         let ep = w.positions[0].entry_price;
         // Should be between cp1 and cp2
@@ -411,114 +406,6 @@ mod comprehensive {
         on_buy(&mut w, 1_000_000_000, price(0.000003)).unwrap();
         let result = on_sell(&mut w, 0, price(0.000006));
         assert!(result.is_err());
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // 31–40: Anti-bundle / per-block buy limits
-    // ═══════════════════════════════════════════════════════════════════════
-
-    fn price_for_mc(mc_usd: f64) -> u64 {
-        // With sol_price=$1 (1_000_000), SUPPLY_RAW=10^18:
-        // price = mc_scaled * PRICE_SCALE * LAMPORTS / (SUPPLY_RAW * sol_price)
-        let mc_scaled = mc_usd * 1_000_000.0;
-        let p = mc_scaled * PRICE_SCALE as f64 * 1_000_000_000.0
-            / (1_000_000_000_000_000_000.0 * 1_000_000.0);
-        p as u64
-    }
-
-    // 31. Under $5K MC: $100 limit enforced
-    #[test]
-    fn test_31_anti_bundle_under_5k() {
-        let mut w = wallet();
-        let cp = price_for_mc(3_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(100.0), cp, 1_000_000, 1).unwrap();
-        assert!(anti_bundle::enforce_buy_limit(&mut w, usd(0.01), cp, 1_000_000, 1).is_err());
-    }
-
-    // 32. $5K–$10K MC: $250 limit
-    #[test]
-    fn test_32_anti_bundle_5k_10k() {
-        let mut w = wallet();
-        let cp = price_for_mc(7_500.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(250.0), cp, 1_000_000, 1).unwrap();
-        assert!(anti_bundle::enforce_buy_limit(&mut w, usd(0.01), cp, 1_000_000, 1).is_err());
-    }
-
-    // 33. $10K–$25K MC: $500 limit
-    #[test]
-    fn test_33_anti_bundle_10k_25k() {
-        let mut w = wallet();
-        let cp = price_for_mc(20_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(500.0), cp, 1_000_000, 1).unwrap();
-        assert!(anti_bundle::enforce_buy_limit(&mut w, usd(0.01), cp, 1_000_000, 1).is_err());
-    }
-
-    // 34. $25K–$50K MC: $1,000 limit
-    #[test]
-    fn test_34_anti_bundle_25k_50k() {
-        let mut w = wallet();
-        let cp = price_for_mc(40_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(1_000.0), cp, 1_000_000, 1).unwrap();
-        assert!(anti_bundle::enforce_buy_limit(&mut w, usd(0.01), cp, 1_000_000, 1).is_err());
-    }
-
-    // 35. Above $50K MC: no limit
-    #[test]
-    fn test_35_anti_bundle_above_50k_no_limit() {
-        let mut w = wallet();
-        let cp = price_for_mc(100_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(1_000_000.0), cp, 1_000_000, 1).unwrap();
-    }
-
-    // 36. Limit resets on new slot
-    #[test]
-    fn test_36_limit_resets_new_slot() {
-        let mut w = wallet();
-        let cp = price_for_mc(3_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(100.0), cp, 1_000_000, 1).unwrap();
-        assert!(anti_bundle::enforce_buy_limit(&mut w, usd(1.0), cp, 1_000_000, 1).is_err());
-        // New slot resets
-        anti_bundle::enforce_buy_limit(&mut w, usd(100.0), cp, 1_000_000, 2).unwrap();
-    }
-
-    // 37. Accumulation within same slot
-    #[test]
-    fn test_37_accumulation_same_slot() {
-        let mut w = wallet();
-        let cp = price_for_mc(3_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(40.0), cp, 1_000_000, 1).unwrap();
-        anti_bundle::enforce_buy_limit(&mut w, usd(40.0), cp, 1_000_000, 1).unwrap();
-        anti_bundle::enforce_buy_limit(&mut w, usd(20.0), cp, 1_000_000, 1).unwrap();
-        // $100 used, $0 remaining
-        assert!(anti_bundle::enforce_buy_limit(&mut w, usd(0.01), cp, 1_000_000, 1).is_err());
-    }
-
-    // 38. Exact limit boundary passes
-    #[test]
-    fn test_38_exact_boundary() {
-        let mut w = wallet();
-        let cp = price_for_mc(3_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(50.0), cp, 1_000_000, 1).unwrap();
-        anti_bundle::enforce_buy_limit(&mut w, usd(50.0), cp, 1_000_000, 1).unwrap(); // exactly $100
-    }
-
-    // 39. MC at exact tier boundary ($5K)
-    #[test]
-    fn test_39_mc_at_exact_boundary() {
-        let mut w = wallet();
-        // At exactly $5K MC → should use $250 tier (next tier up)
-        let cp = price_for_mc(5_000.0);
-        anti_bundle::enforce_buy_limit(&mut w, usd(250.0), cp, 1_000_000, 1).unwrap();
-    }
-
-    // 40. tokens_to_usd conversion accuracy
-    #[test]
-    fn test_40_tokens_to_usd() {
-        // With sol_price=$1, 1M human tokens at MC=$3K should be worth $3
-        let cp = price_for_mc(3_000.0);
-        let amount_raw = 1_000_000u64 * 1_000_000_000; // 1M human tokens
-        let val = anti_bundle::tokens_to_usd(amount_raw, cp, 1_000_000).unwrap();
-        assert!(val >= 2_700_000 && val <= 3_300_000, "Got {}", val);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -669,11 +556,11 @@ mod comprehensive {
         let entry = price(0.000003);
         on_buy(&mut w, 1_000_000_000, entry).unwrap();
 
-        // At 1.5x, sell ~66.67% (Phase 1: initial_usd / current_value)
+        // At 1.5x, sell ~66.67% (Phase 1: initial_sol / current_value)
         let cp = price_at_mult(entry, 1.5);
         on_sell(&mut w, 600_000_000, cp).unwrap();
 
-        // Remaining: 400M tokens. Same initial_usd.
+        // Remaining: 400M tokens. Same initial_sol.
         // At same price, sellable % should be higher because balance is smaller.
         let remaining = w.positions[0].token_balance;
         assert_eq!(remaining, 400_000_000);

@@ -1,7 +1,7 @@
 use crate::errors::SkyeLadderError;
 use crate::math;
 use crate::state::{
-    Position, WalletRecord, MAX_POSITIONS, MERGE_THRESHOLD_BPS, PRICE_SCALE, USD_SCALE,
+    Position, WalletRecord, MAX_POSITIONS, MERGE_THRESHOLD_BPS, PRICE_SCALE,
 };
 use anchor_lang::prelude::*;
 
@@ -22,12 +22,9 @@ pub fn on_buy(
     require!(current_price > 0, SkyeLadderError::ZeroPrice);
     require!(tokens_bought > 0, SkyeLadderError::ZeroTokens);
 
-    // initial_usd = tokens_bought * current_price / PRICE_SCALE * USD_SCALE
-    // = tokens_bought * current_price * USD_SCALE / PRICE_SCALE
-    let initial_usd = (tokens_bought as u128)
+    // initial_sol = tokens_bought * current_price / PRICE_SCALE
+    let initial_sol = (tokens_bought as u128)
         .checked_mul(current_price as u128)
-        .ok_or(SkyeLadderError::MathOverflow)?
-        .checked_mul(USD_SCALE)
         .ok_or(SkyeLadderError::MathOverflow)?
         .checked_div(PRICE_SCALE)
         .ok_or(SkyeLadderError::MathOverflow)? as u64;
@@ -38,7 +35,7 @@ pub fn on_buy(
             &mut wallet.positions[merge_idx],
             tokens_bought,
             current_price,
-            initial_usd,
+            initial_sol,
         )?;
         return Ok(());
     }
@@ -51,7 +48,7 @@ pub fn on_buy(
 
     wallet.positions.push(Position {
         entry_price: current_price,
-        initial_usd,
+        initial_sol,
         token_balance: tokens_bought,
         unlocked_bps: 0,
         original_balance: tokens_bought,
@@ -180,10 +177,10 @@ fn merge_into_position(
     existing: &mut Position,
     tokens_bought: u64,
     _current_price: u64,
-    new_initial_usd: u64,
+    new_initial_sol: u64,
 ) -> Result<()> {
-    let old_cost = existing.initial_usd as u128;
-    let new_cost = new_initial_usd as u128;
+    let old_cost = existing.initial_sol as u128;
+    let new_cost = new_initial_sol as u128;
     let total_cost = old_cost
         .checked_add(new_cost)
         .ok_or(SkyeLadderError::MathOverflow)?;
@@ -194,21 +191,15 @@ fn merge_into_position(
         .checked_add(new_tokens)
         .ok_or(SkyeLadderError::MathOverflow)?;
 
-    // Weighted average entry price = total_cost_in_price_units / total_tokens
-    // entry_price = (total_cost / USD_SCALE) * PRICE_SCALE / total_tokens
-    // = total_cost * PRICE_SCALE / (total_tokens * USD_SCALE)
+    // Weighted average entry price = total_cost * PRICE_SCALE / total_tokens
     let new_entry = total_cost
         .checked_mul(PRICE_SCALE)
         .ok_or(SkyeLadderError::MathOverflow)?
-        .checked_div(
-            total_tokens
-                .checked_mul(USD_SCALE)
-                .ok_or(SkyeLadderError::MathOverflow)?,
-        )
+        .checked_div(total_tokens)
         .ok_or(SkyeLadderError::MathOverflow)?;
 
     existing.entry_price = new_entry as u64;
-    existing.initial_usd = total_cost as u64;
+    existing.initial_sol = total_cost as u64;
     existing.token_balance = total_tokens as u64;
     // Merge original_balance: sum of both originals (new buy's original = tokens_bought)
     let old_original = if existing.original_balance > 0 {
@@ -252,8 +243,8 @@ fn merge_closest_pair(positions: &mut Vec<Position>) -> Result<()> {
     // Merge b into a
     let pos_b = positions[merge_b];
 
-    let total_cost = (positions[merge_a].initial_usd as u128)
-        .checked_add(pos_b.initial_usd as u128)
+    let total_cost = (positions[merge_a].initial_sol as u128)
+        .checked_add(pos_b.initial_sol as u128)
         .ok_or(SkyeLadderError::MathOverflow)?;
     let total_tokens = (positions[merge_a].token_balance as u128)
         .checked_add(pos_b.token_balance as u128)
@@ -262,15 +253,11 @@ fn merge_closest_pair(positions: &mut Vec<Position>) -> Result<()> {
     let new_entry = total_cost
         .checked_mul(PRICE_SCALE)
         .ok_or(SkyeLadderError::MathOverflow)?
-        .checked_div(
-            total_tokens
-                .checked_mul(USD_SCALE)
-                .ok_or(SkyeLadderError::MathOverflow)?,
-        )
+        .checked_div(total_tokens)
         .ok_or(SkyeLadderError::MathOverflow)?;
 
     positions[merge_a].entry_price = new_entry as u64;
-    positions[merge_a].initial_usd = total_cost as u64;
+    positions[merge_a].initial_sol = total_cost as u64;
     positions[merge_a].token_balance = total_tokens as u64;
     // Sum original_balances
     let orig_a = if positions[merge_a].original_balance > 0 {
@@ -316,19 +303,19 @@ fn consolidate_fully_unlocked(positions: &mut Vec<Position>, current_price: u64)
 
     // Merge all into the first one
     let first = fully_unlocked[0];
-    let mut total_usd = positions[first].initial_usd as u128;
+    let mut total_sol = positions[first].initial_sol as u128;
     let mut total_tokens = positions[first].token_balance as u128;
     let mut total_original = positions[first].original_balance.max(positions[first].token_balance) as u128;
 
     for &idx in fully_unlocked.iter().skip(1) {
-        total_usd += positions[idx].initial_usd as u128;
+        total_sol += positions[idx].initial_sol as u128;
         total_tokens += positions[idx].token_balance as u128;
         total_original += positions[idx].original_balance.max(positions[idx].token_balance) as u128;
     }
 
     // Use current_price as entry for the consolidated position (it's fully unlocked anyway)
     positions[first].entry_price = current_price;
-    positions[first].initial_usd = total_usd as u64;
+    positions[first].initial_sol = total_sol as u64;
     positions[first].token_balance = total_tokens as u64;
     positions[first].original_balance = total_original as u64;
     positions[first].unlocked_bps = 10_000;
@@ -553,7 +540,7 @@ mod tests {
     fn test_find_mergeable_exact_same_price() {
         let positions = vec![Position {
             entry_price: price(0.000003),
-            initial_usd: 3_000_000,
+            initial_sol: 3_000_000,
             token_balance: 1_000_000_000,
             unlocked_bps: 0,
             original_balance: 0,
@@ -568,7 +555,7 @@ mod tests {
     fn test_find_mergeable_at_boundary() {
         let positions = vec![Position {
             entry_price: price(0.000003),
-            initial_usd: 3_000_000_000,
+            initial_sol: 3_000_000_000,
             token_balance: 1_000_000_000,
             unlocked_bps: 0,
             original_balance: 0,
@@ -584,21 +571,21 @@ mod tests {
         let mut positions = vec![
             Position {
                 entry_price: price(0.00001),
-                initial_usd: 10_000_000,
+                initial_sol: 10_000_000,
                 token_balance: 100_000_000,
                 unlocked_bps: 0,
                 original_balance: 100_000_000,
             },
             Position {
                 entry_price: price(0.00005),
-                initial_usd: 50_000_000,
+                initial_sol: 50_000_000,
                 token_balance: 100_000_000,
                 unlocked_bps: 0,
                 original_balance: 100_000_000,
             },
             Position {
                 entry_price: price(0.00006),
-                initial_usd: 60_000_000,
+                initial_sol: 60_000_000,
                 token_balance: 100_000_000,
                 unlocked_bps: 0,
                 original_balance: 100_000_000,

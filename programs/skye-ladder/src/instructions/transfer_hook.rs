@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::Mint;
 
-use crate::anti_bundle;
 use crate::errors::SkyeLadderError;
 use crate::pool_price;
 use crate::positions;
@@ -36,17 +35,6 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         // ── BUY: Pool → Wallet ──
         let receiver_record = &mut load_wallet_record_mut(
             &ctx.accounts.receiver_wallet_record,
-        )?;
-
-        // Anti-bundle: enforce per-block buy limits at low MC
-        let buy_usd = anti_bundle::tokens_to_usd(amount, current_price, config.sol_price_usd)?;
-        let clock = Clock::get()?;
-        anti_bundle::enforce_buy_limit(
-            receiver_record,
-            buy_usd,
-            current_price,
-            config.sol_price_usd,
-            clock.slot,
         )?;
 
         positions::on_buy(receiver_record, amount, current_price)?;

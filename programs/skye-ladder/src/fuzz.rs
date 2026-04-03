@@ -18,7 +18,7 @@
 mod fuzz_tests {
     use crate::math::{calculate_unlocked_bps, effective_unlock_bps, sellable_tokens};
     use crate::positions::{on_buy, on_sell};
-    use crate::state::{Position, WalletRecord, PRICE_SCALE, USD_SCALE, MAX_POSITIONS};
+    use crate::state::{Position, WalletRecord, PRICE_SCALE, MAX_POSITIONS};
     use anchor_lang::prelude::Pubkey;
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -334,11 +334,11 @@ mod fuzz_tests {
         for i in 0..10_000 {
             let entry = rng.range(1, u64::MAX / 2);
             let tokens = rng.range(1, 1_000_000_000_000);
-            let iusd = rng.range(1, u64::MAX / PRICE_SCALE as u64);
+            let isol = rng.range(1, u64::MAX / PRICE_SCALE as u64);
 
             let pos = Position {
                 entry_price: entry,
-                initial_usd: iusd,
+                initial_sol: isol,
                 token_balance: tokens,
                 unlocked_bps: 0,
                 original_balance: tokens,
@@ -400,14 +400,14 @@ mod fuzz_tests {
         for _ in 0..10_000 {
             let entry = rng.range(1_000_000, 1_000_000_000_000_000);
             let tokens = rng.range(1_000, 1_000_000_000);
-            let iusd = (tokens as u128 * entry as u128 * USD_SCALE / PRICE_SCALE) as u64;
-            if iusd == 0 {
+            let isol = (tokens as u128 * entry as u128 / PRICE_SCALE) as u64;
+            if isol == 0 {
                 continue;
             }
 
             let mut pos = Position {
                 entry_price: entry,
-                initial_usd: iusd,
+                initial_sol: isol,
                 token_balance: tokens,
                 unlocked_bps: 0,
                 original_balance: tokens,

@@ -1,5 +1,5 @@
 use crate::errors::SkyeLadderError;
-use crate::state::{Position, PRICE_SCALE, USD_SCALE, BPS_DENOMINATOR};
+use crate::state::{Position, PRICE_SCALE, BPS_DENOMINATOR};
 use anchor_lang::prelude::*;
 
 /// Internal multiplier precision: we compute mult * 10_000 so 1x = 10_000, 2x = 20_000, etc.
@@ -125,22 +125,19 @@ pub fn calculate_unlocked_bps(
     Ok(bps as u32)
 }
 
-/// Phase 1: sell back initial USD value.
+/// Phase 1: sell back initial SOL value.
 ///
-/// sellable_ratio = initial_usd / (token_balance × current_price_in_usd)
+/// sellable_ratio = initial_sol / (token_balance × current_price_in_sol)
 ///
-/// Since initial_usd is scaled by USD_SCALE (10^6) and current_price is scaled
-/// by PRICE_SCALE (10^18), we compute:
+/// Since initial_sol = tokens_bought × entry_price / PRICE_SCALE (raw SOL),
+/// and current position value = token_balance × current_price / PRICE_SCALE,
+/// we compute:
 ///
-///   bps = initial_usd × PRICE_SCALE × BPS_DENOMINATOR / (token_balance × current_price)
-///
-/// This naturally cancels the USD_SCALE in initial_usd with the price scaling,
-/// because initial_usd = tokens_bought × entry_price / PRICE_SCALE × USD_SCALE,
-/// and we're dividing by token_balance × current_price.
+///   bps = initial_sol × PRICE_SCALE × BPS_DENOMINATOR / (token_balance × current_price)
 ///
 /// All intermediate math uses u128. Result is capped at 10_000 bps.
 fn phase1_unlock(current_price: u64, position: &Position) -> Result<u32> {
-    let initial_usd = position.initial_usd as u128;
+    let initial_sol = position.initial_sol as u128;
     // Use original_balance to prevent the repeated-sell bypass.
     // Legacy positions may have garbage — detect by checking original >= balance.
     let token_balance = if position.original_balance >= position.token_balance {
@@ -151,14 +148,8 @@ fn phase1_unlock(current_price: u64, position: &Position) -> Result<u32> {
     let cp = current_price as u128;
     let bps_denom = BPS_DENOMINATOR as u128;
 
-    // sellable_ratio = initial_usd_dollars / position_value_dollars
-    //
-    // initial_usd is in USD × USD_SCALE (10^6).
-    // position_value = token_balance × current_price / PRICE_SCALE (in raw USD).
-    // To get position_value in USD_SCALE: token_balance × current_price × USD_SCALE / PRICE_SCALE.
-    //
-    // bps = initial_usd × PRICE_SCALE × BPS_DENOM / (token_balance × current_price × USD_SCALE)
-    let numerator = initial_usd
+    // bps = initial_sol × PRICE_SCALE × BPS_DENOM / (token_balance × current_price)
+    let numerator = initial_sol
         .checked_mul(PRICE_SCALE)
         .ok_or(SkyeLadderError::MathOverflow)?
         .checked_mul(bps_denom)
@@ -166,8 +157,6 @@ fn phase1_unlock(current_price: u64, position: &Position) -> Result<u32> {
 
     let denominator = token_balance
         .checked_mul(cp)
-        .ok_or(SkyeLadderError::MathOverflow)?
-        .checked_mul(USD_SCALE)
         .ok_or(SkyeLadderError::MathOverflow)?;
 
     require!(denominator > 0, SkyeLadderError::ZeroTokens);
@@ -239,14 +228,14 @@ pub fn sellable_tokens(
 mod tests {
     use super::*;
 
-    /// Helper: create a position. initial_usd is auto-computed as
-    /// tokens × entry_price × USD_SCALE / PRICE_SCALE, matching on_buy behavior.
-    fn make_position(entry_price_f: f64, tokens: u64, _initial_usd_f: f64) -> Position {
+    /// Helper: create a position. initial_sol is auto-computed as
+    /// tokens × entry_price_f, matching on_buy behavior (tokens * price / PRICE_SCALE).
+    fn make_position(entry_price_f: f64, tokens: u64, _initial_sol_f: f64) -> Position {
         let ep = (entry_price_f * PRICE_SCALE as f64) as u64;
-        let iusd = (tokens as f64 * entry_price_f * USD_SCALE as f64) as u64;
+        let isol = (tokens as f64 * entry_price_f) as u64;
         Position {
             entry_price: ep,
-            initial_usd: iusd,
+            initial_sol: isol,
             token_balance: tokens,
             unlocked_bps: 0,
             original_balance: tokens,
@@ -289,8 +278,8 @@ mod tests {
 
     #[test]
     fn test_phase1_just_above_entry() {
-        // At 1.01x, should be able to sell ~99% (initial_usd / current_value)
-        // initial_usd = $3, current_value = $3.03
+        // At 1.01x, should be able to sell ~99% (initial_sol / current_value)
+        // initial_sol = $3, current_value = $3.03
         // sellable = 3/3.03 ≈ 99.01%
         let pos = make_position(0.000003, 1_000_000_000, 3.0);
         let price = price_at_mult(pos.entry_price, 1.01);
@@ -301,8 +290,8 @@ mod tests {
 
     #[test]
     fn test_phase1_at_1_5x() {
-        // At 1.5x: sellable = initial_usd / (tokens * 1.5 * entry)
-        // = initial_usd / (initial_usd * 1.5) = 1/1.5 ≈ 66.67%
+        // At 1.5x: sellable = initial_sol / (tokens * 1.5 * entry)
+        // = initial_sol / (initial_sol * 1.5) = 1/1.5 ≈ 66.67%
         let pos = make_position(0.000003, 1_000_000_000, 3.0);
         let price = price_at_mult(pos.entry_price, 1.5);
         let bps = calculate_unlocked_bps(price, &pos).unwrap();
@@ -502,7 +491,7 @@ mod tests {
     fn test_zero_entry_price_errors() {
         let pos = Position {
             entry_price: 0,
-            initial_usd: 3_000_000,
+            initial_sol: 3_000_000,
             token_balance: 1_000_000_000,
             unlocked_bps: 0,
             original_balance: 1_000_000_000,
@@ -513,12 +502,12 @@ mod tests {
 
     #[test]
     fn test_very_small_position() {
-        // 1 token, tiny price — initial_usd = 1 * 1000 * USD_SCALE / PRICE_SCALE
+        // 1 token, tiny price — initial_sol = 1 * 1000 * USD_SCALE / PRICE_SCALE
         // That's basically 0 in USD_SCALE, so use a manually consistent value.
         let ep = 1_000_000_000_000u64; // 10^12 = $0.000001 * PRICE_SCALE
         let pos = Position {
             entry_price: ep,
-            initial_usd: 1,
+            initial_sol: 1,
             token_balance: 1,
             unlocked_bps: 0,
             original_balance: 1,

@@ -32,7 +32,7 @@ export function useWalletRecord() {
 
         const positions: Position[] = (account.positions as any[]).map((p) => ({
           entryPrice: Number(p.entryPrice),
-          initialUsd: Number(p.initialUsd),
+          initialSol: Number(p.initialSol || p.initialUsd || 0),
           tokenBalance: Number(p.tokenBalance),
           unlockedBps: p.unlockedBps,
           originalBalance: Number(p.originalBalance || 0),

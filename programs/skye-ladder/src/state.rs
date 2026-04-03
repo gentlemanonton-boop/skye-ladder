@@ -6,9 +6,6 @@ pub const MAX_POSITIONS: usize = 10;
 /// Fixed-point scale for prices: 10^18
 pub const PRICE_SCALE: u128 = 1_000_000_000_000_000_000;
 
-/// Fixed-point scale for USD amounts: 10^6
-pub const USD_SCALE: u128 = 1_000_000;
-
 /// Basis points denominator (100% = 10_000 bps)
 pub const BPS_DENOMINATOR: u32 = 10_000;
 
@@ -31,10 +28,6 @@ pub struct Config {
     pub paused: bool,
     /// Bump seed for the config PDA
     pub bump: u8,
-    /// SOL price in USD, scaled by USD_SCALE (10^6). E.g. 130_000_000 = $130.
-    /// Used by anti-bundle to convert SOL-denominated pool prices to USD.
-    /// Admin-updatable. If 0, anti-bundle limits are effectively disabled.
-    pub sol_price_usd: u64,
 }
 
 /// Per-wallet record storing all independent buy positions.
@@ -64,8 +57,8 @@ pub struct WalletRecord {
 pub struct Position {
     /// Entry price at time of buy, scaled by 10^18
     pub entry_price: u64,
-    /// Initial USD value of the buy, scaled by 10^6
-    pub initial_usd: u64,
+    /// Initial SOL value of the buy (tokens * price / PRICE_SCALE)
+    pub initial_sol: u64,
     /// Current token balance in this position (raw lamports)
     pub token_balance: u64,
     /// High-water mark of unlocked basis points (0–10_000)

@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 use spl_transfer_hook_interface::instruction::TransferHookInstruction;
 
-pub mod anti_bundle;
 pub mod errors;
 pub mod instructions;
 pub mod math;
@@ -50,10 +49,6 @@ pub mod skye_ladder {
 
     pub fn update_extra_metas(ctx: Context<UpdateExtraMetas>) -> Result<()> {
         instructions::admin::update_extra_metas(ctx)
-    }
-
-    pub fn set_sol_price(ctx: Context<SetSolPrice>, sol_price_usd: u64) -> Result<()> {
-        instructions::admin::set_sol_price(ctx, sol_price_usd)
     }
 
     pub fn set_paused(ctx: Context<AdminAction>, paused: bool) -> Result<()> {

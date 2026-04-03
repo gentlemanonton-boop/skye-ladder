@@ -1,8 +1,30 @@
-.anchor
-.DS_Store
-target
+# Rust / Anchor
+target/
+.anchor/
 **/*.rs.bk
-node_modules
-test-ledger
+
+# Node
+node_modules/
+frontend/dist/
+
+# Vercel
+.vercel/
+frontend/.vercel/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+
+# Solana keypairs — never commit private keys
+*-keypair.json
+id.json
+scripts/.deploy-state.json
+
+# OS
+.DS_Store
+Thumbs.db
 .yarn
-.vercel
+
+# Test
+test-ledger/
