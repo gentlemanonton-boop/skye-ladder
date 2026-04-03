@@ -1,0 +1,151 @@
+{
+  "address": "GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX",
+  "version": "0.1.0",
+  "name": "skye_amm",
+  "metadata": {
+    "address": "GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX"
+  },
+  "instructions": [
+    {
+      "name": "initializePool",
+      "discriminator": [95, 180, 10, 172, 84, 174, 232, 40],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "skyeMint" },
+        { "name": "wsolMint" },
+        { "name": "pool", "writable": true },
+        { "name": "skyeReserve" },
+        { "name": "wsolReserve" },
+        { "name": "lpMint" },
+        { "name": "lpAuthority" },
+        { "name": "token2022Program" },
+        { "name": "tokenProgram" },
+        { "name": "associatedTokenProgram" },
+        { "name": "systemProgram" }
+      ],
+      "args": [
+        { "name": "feeBps", "type": "u16" }
+      ]
+    },
+    {
+      "name": "addLiquidity",
+      "discriminator": [181, 157, 89, 67, 143, 182, 52, 72],
+      "accounts": [
+        { "name": "user", "writable": true, "signer": true },
+        { "name": "pool", "writable": true },
+        { "name": "skyeMint" },
+        { "name": "wsolMint" },
+        { "name": "userSkyeAccount", "writable": true },
+        { "name": "userWsolAccount", "writable": true },
+        { "name": "skyeReserve", "writable": true },
+        { "name": "wsolReserve", "writable": true },
+        { "name": "lpMint", "writable": true },
+        { "name": "userLpAccount", "writable": true },
+        { "name": "lpAuthority" },
+        { "name": "token2022Program" },
+        { "name": "tokenProgram" }
+      ],
+      "args": [
+        { "name": "skyeAmount", "type": "u64" },
+        { "name": "wsolAmount", "type": "u64" },
+        { "name": "minLpTokens", "type": "u64" }
+      ]
+    },
+    {
+      "name": "removeLiquidity",
+      "discriminator": [80, 85, 209, 72, 24, 206, 177, 108],
+      "accounts": [
+        { "name": "user", "writable": true, "signer": true },
+        { "name": "pool", "writable": true },
+        { "name": "skyeMint" },
+        { "name": "wsolMint" },
+        { "name": "userSkyeAccount", "writable": true },
+        { "name": "userWsolAccount", "writable": true },
+        { "name": "skyeReserve", "writable": true },
+        { "name": "wsolReserve", "writable": true },
+        { "name": "lpMint", "writable": true },
+        { "name": "userLpAccount", "writable": true },
+        { "name": "token2022Program" },
+        { "name": "tokenProgram" }
+      ],
+      "args": [
+        { "name": "lpAmount", "type": "u64" },
+        { "name": "minSkyeOut", "type": "u64" },
+        { "name": "minWsolOut", "type": "u64" }
+      ]
+    },
+    {
+      "name": "swap",
+      "discriminator": [248, 198, 158, 145, 225, 117, 135, 200],
+      "accounts": [
+        { "name": "user", "writable": true, "signer": true },
+        { "name": "pool", "writable": true },
+        { "name": "skyeMint" },
+        { "name": "wsolMint" },
+        { "name": "userSkyeAccount", "writable": true },
+        { "name": "userWsolAccount", "writable": true },
+        { "name": "skyeReserve", "writable": true },
+        { "name": "wsolReserve", "writable": true },
+        { "name": "token2022Program" },
+        { "name": "tokenProgram" }
+      ],
+      "args": [
+        { "name": "amountIn", "type": "u64" },
+        { "name": "minAmountOut", "type": "u64" },
+        { "name": "buy", "type": "bool" }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Pool",
+      "discriminator": [241, 154, 109, 4, 17, 177, 109, 188],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "skyeMint", "type": "pubkey" },
+          { "name": "wsolMint", "type": "pubkey" },
+          { "name": "skyeReserve", "type": "pubkey" },
+          { "name": "wsolReserve", "type": "pubkey" },
+          { "name": "lpMint", "type": "pubkey" },
+          { "name": "skyeAmount", "type": "u64" },
+          { "name": "wsolAmount", "type": "u64" },
+          { "name": "feeBps", "type": "u16" },
+          { "name": "bump", "type": "u8" },
+          { "name": "lpAuthorityBump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "Pool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "skyeMint", "type": "pubkey" },
+          { "name": "wsolMint", "type": "pubkey" },
+          { "name": "skyeReserve", "type": "pubkey" },
+          { "name": "wsolReserve", "type": "pubkey" },
+          { "name": "lpMint", "type": "pubkey" },
+          { "name": "skyeAmount", "type": "u64" },
+          { "name": "wsolAmount", "type": "u64" },
+          { "name": "feeBps", "type": "u16" },
+          { "name": "bump", "type": "u8" },
+          { "name": "lpAuthorityBump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "InsufficientLiquidity", "msg": "Insufficient liquidity in the pool" },
+    { "code": 6001, "name": "SlippageExceeded", "msg": "Output amount is below minimum (slippage exceeded)" },
+    { "code": 6002, "name": "ZeroAmount", "msg": "Amount must be greater than zero" },
+    { "code": 6003, "name": "MathOverflow", "msg": "Arithmetic overflow" },
+    { "code": 6004, "name": "InvalidMint", "msg": "Invalid mint address" },
+    { "code": 6005, "name": "InsufficientLpTokens", "msg": "Insufficient LP tokens" },
+    { "code": 6006, "name": "InvalidFee", "msg": "Fee basis points must be <= 10000" }
+  ]
+}

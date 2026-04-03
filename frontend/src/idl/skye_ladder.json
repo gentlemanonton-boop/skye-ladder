@@ -1,0 +1,220 @@
+{
+  "address": "4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz",
+  "version": "0.1.0",
+  "name": "skye_ladder",
+  "metadata": {
+    "address": "4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz"
+  },
+  "instructions": [
+    {
+      "name": "initialize",
+      "discriminator": [175,175,109,31,13,152,155,237],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "mint" },
+        { "name": "config", "writable": true },
+        { "name": "extraAccountMetaList", "writable": true },
+        { "name": "systemProgram" }
+      ],
+      "args": [
+        { "name": "pool", "type": "pubkey" },
+        { "name": "lbPair", "type": "pubkey" }
+      ]
+    },
+    {
+      "name": "createWalletRecord",
+      "discriminator": [197,118,207,205,173,88,237,254],
+      "accounts": [
+        { "name": "payer", "writable": true, "signer": true },
+        { "name": "wallet" },
+        { "name": "mint" },
+        { "name": "walletRecord", "writable": true },
+        { "name": "systemProgram" }
+      ],
+      "args": []
+    },
+    {
+      "name": "setTestPrice",
+      "discriminator": [132,240,240,176,155,122,8,176],
+      "accounts": [
+        { "name": "authority", "signer": true },
+        { "name": "mint" },
+        { "name": "config" },
+        { "name": "lbPair", "writable": true }
+      ],
+      "args": [
+        { "name": "skyeAmount", "type": "u64" },
+        { "name": "wsolAmount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "transferHook",
+      "discriminator": [220,57,220,152,126,125,97,168],
+      "accounts": [
+        { "name": "sourceToken" },
+        { "name": "mint" },
+        { "name": "destinationToken" },
+        { "name": "ownerDelegate" },
+        { "name": "extraAccountMetaList" },
+        { "name": "config" },
+        { "name": "senderWalletRecord", "writable": true },
+        { "name": "receiverWalletRecord", "writable": true },
+        { "name": "lbPair" }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "updatePool",
+      "discriminator": [239,214,170,78,36,35,30,34],
+      "accounts": [
+        { "name": "authority", "signer": true },
+        { "name": "mint" },
+        { "name": "config", "writable": true }
+      ],
+      "args": [
+        { "name": "newPool", "type": "pubkey" },
+        { "name": "newLbPair", "type": "pubkey" }
+      ]
+    },
+    {
+      "name": "updateExtraMetas",
+      "discriminator": [123,51,189,224,34,225,56,24],
+      "accounts": [
+        { "name": "authority", "signer": true },
+        { "name": "mint" },
+        { "name": "config" },
+        { "name": "extraAccountMetaList", "writable": true }
+      ],
+      "args": []
+    },
+    {
+      "name": "setSolPrice",
+      "discriminator": [151,237,70,191,232,81,138,214],
+      "accounts": [
+        { "name": "authority", "writable": true, "signer": true },
+        { "name": "mint" },
+        { "name": "config", "writable": true },
+        { "name": "systemProgram" }
+      ],
+      "args": [
+        { "name": "solPriceUsd", "type": "u64" }
+      ]
+    },
+    {
+      "name": "setPaused",
+      "discriminator": [91,60,125,192,176,225,166,218],
+      "accounts": [
+        { "name": "authority", "signer": true },
+        { "name": "mint" },
+        { "name": "config", "writable": true }
+      ],
+      "args": [
+        { "name": "paused", "type": "bool" }
+      ]
+    },
+    {
+      "name": "transferAuthority",
+      "discriminator": [48,169,76,72,229,180,55,161],
+      "accounts": [
+        { "name": "authority", "signer": true },
+        { "name": "mint" },
+        { "name": "config", "writable": true }
+      ],
+      "args": [
+        { "name": "newAuthority", "type": "pubkey" }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [155,12,170,224,30,250,204,130],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "mint", "type": "pubkey" },
+          { "name": "pool", "type": "pubkey" },
+          { "name": "lbPair", "type": "pubkey" },
+          { "name": "paused", "type": "bool" },
+          { "name": "bump", "type": "u8" },
+          { "name": "solPriceUsd", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "WalletRecord",
+      "discriminator": [146,10,246,18,155,66,81,49],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner", "type": "pubkey" },
+          { "name": "mint", "type": "pubkey" },
+          { "name": "positionCount", "type": "u8" },
+          { "name": "positions", "type": { "vec": { "defined": { "name": "Position" } } } },
+          { "name": "lastBuySlot", "type": "u64" },
+          { "name": "slotBuyUsd", "type": "u64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "pubkey" },
+          { "name": "mint", "type": "pubkey" },
+          { "name": "pool", "type": "pubkey" },
+          { "name": "lbPair", "type": "pubkey" },
+          { "name": "paused", "type": "bool" },
+          { "name": "bump", "type": "u8" },
+          { "name": "solPriceUsd", "type": "u64" }
+        ]
+      }
+    },
+    {
+      "name": "WalletRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner", "type": "pubkey" },
+          { "name": "mint", "type": "pubkey" },
+          { "name": "positionCount", "type": "u8" },
+          { "name": "positions", "type": { "vec": { "defined": { "name": "Position" } } } },
+          { "name": "lastBuySlot", "type": "u64" },
+          { "name": "slotBuyUsd", "type": "u64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "entryPrice", "type": "u64" },
+          { "name": "initialUsd", "type": "u64" },
+          { "name": "tokenBalance", "type": "u64" },
+          { "name": "unlockedBps", "type": "u32" },
+          { "name": "originalBalance", "type": "u64" }
+        ]
+      }
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "SellExceedsUnlocked", "msg": "Sell amount exceeds unlocked tokens across all positions" },
+    { "code": 6001, "name": "MaxPositionsExceeded", "msg": "Maximum positions per wallet (10) exceeded" },
+    { "code": 6002, "name": "MathOverflow", "msg": "Arithmetic overflow in fixed-point calculation" },
+    { "code": 6003, "name": "InvalidPool", "msg": "Invalid pool address" },
+    { "code": 6004, "name": "BuyLimitExceeded", "msg": "Per-block buy limit exceeded for current market cap range" },
+    { "code": 6005, "name": "ZeroPrice", "msg": "Price must be greater than zero" },
+    { "code": 6006, "name": "ZeroTokens", "msg": "Token balance must be greater than zero" },
+    { "code": 6007, "name": "Unauthorized", "msg": "Unauthorized: only admin can perform this action" },
+    { "code": 6008, "name": "Paused", "msg": "Program is paused" }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "skye-ladder",
+  "version": "0.1.0",
+  "license": "MIT",
+  "scripts": {
+    "deploy": "npx ts-node scripts/deploy.ts",
+    "create-pool": "npx ts-node scripts/create-pool.ts",
+    "test-hook": "npx ts-node scripts/test-hook.ts",
+    "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
+    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
+    "@irys/sdk": "^0.2.11",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/umi": "^1.5.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
+    "@metaplex-foundation/umi-web3js-adapters": "^1.5.1",
+    "@meteora-ag/dlmm": "^1.9.4",
+    "@solana/spl-token": "^0.4.0",
+    "@solana/web3.js": "^1.95.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "chai": "^4.3.4",
+    "mocha": "^10.0.0",
+    "prettier": "^3.0.0",
+    "ts-mocha": "^10.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
