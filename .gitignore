@@ -20,6 +20,7 @@ frontend/.vercel/
 *-keypair.json
 id.json
 scripts/.deploy-state.json
+scripts/.lb-pair-data.bin
 
 # OS
 .DS_Store

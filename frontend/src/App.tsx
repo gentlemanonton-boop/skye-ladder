@@ -3,6 +3,7 @@ import { usePool } from "./hooks/usePool";
 import { useWalletRecord } from "./hooks/useWalletRecord";
 import { useSolPrice } from "./hooks/useSolPrice";
 import { formatUsd } from "./lib/format";
+import { PriceChart } from "./components/PriceChart";
 import { SwapPanel } from "./components/SwapPanel";
 import { UnlockProgress } from "./components/UnlockProgress";
 import { TierBreakdown } from "./components/TierBreakdown";
@@ -51,6 +52,7 @@ export default function App() {
           </div>
         ) : (
           <>
+            <PriceChart />
             <SwapPanel currentPrice={currentPrice} solUsd={solUsd} />
             <UnlockProgress positions={positions} currentPrice={currentPrice} />
             <TierBreakdown positions={positions} currentPrice={currentPrice} />
