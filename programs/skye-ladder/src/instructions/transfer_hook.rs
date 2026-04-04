@@ -4,7 +4,7 @@ use anchor_spl::token_interface::Mint;
 use crate::errors::SkyeLadderError;
 use crate::pool_price;
 use crate::positions;
-use crate::state::{Config, WalletRecord};
+use crate::state::{Config, WalletRecord, PRICE_SCALE};
 
 /// Transfer hook execute handler — called by Token-2022 on every transfer.
 ///
@@ -47,6 +47,7 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         let sender_record = &mut load_wallet_record_mut(
             &ctx.accounts.sender_wallet_record,
         )?;
+        sanitize_corrupt_entry_prices(sender_record, current_price);
         positions::on_sell(sender_record, amount, current_price)?;
         save_wallet_record(&ctx.accounts.sender_wallet_record, sender_record)?;
 
@@ -57,6 +58,7 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         let sender_record = &mut load_wallet_record_mut(
             &ctx.accounts.sender_wallet_record,
         )?;
+        sanitize_corrupt_entry_prices(sender_record, current_price);
         positions::on_sell(sender_record, amount, current_price)?;
         save_wallet_record(&ctx.accounts.sender_wallet_record, sender_record)?;
 
@@ -73,6 +75,37 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
     Ok(())
 }
 
+/// Fix positions with impossibly high entry_price caused by old merge bugs.
+///
+/// If a position's entry_price is >1000x the current spot price, it's corrupt
+/// (no real position could be that far underwater). Reset entry_price to
+/// current_price so the position is treated as "at entry" (Phase 1 unlock)
+/// rather than getting 100% unlock via the underwater rule.
+fn sanitize_corrupt_entry_prices(record: &mut WalletRecord, current_price: u64) {
+    let cp = current_price as u128;
+    for pos in record.positions.iter_mut() {
+        if pos.entry_price == 0 || pos.token_balance == 0 {
+            continue;
+        }
+        let ep = pos.entry_price as u128;
+        // If entry_price > 1000x current price, it's corrupt
+        if ep > cp.saturating_mul(1000) {
+            msg!(
+                "Skye Ladder: Fixing corrupt entry_price {} → {} for position with {} tokens",
+                pos.entry_price, current_price, pos.token_balance
+            );
+            pos.entry_price = current_price;
+            // Recalculate initial_sol from corrected entry price
+            let new_initial = (pos.original_balance as u128)
+                .saturating_mul(current_price as u128)
+                / PRICE_SCALE;
+            pos.initial_sol = new_initial as u64;
+            // Reset unlock since the position is effectively "new"
+            pos.unlocked_bps = 0;
+        }
+    }
+}
+
 /// Read the spot price from the Skye AMM Pool account.
 ///
 /// Validates that the pool account matches the address stored in Config,
@@ -86,10 +119,11 @@ fn read_spot_price(accounts: &TransferHook) -> Result<u64> {
         lb_pair_info.key() == config.lb_pair,
         SkyeLadderError::InvalidPool
     );
-    // AMM program must own the pool account to prevent spoofed price data
+    // Pool must be owned by AMM or Curve program to prevent spoofed price data
     let amm_program_id = pubkey!("GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX");
+    let curve_program_id = pubkey!("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
     require!(
-        *lb_pair_info.owner == amm_program_id,
+        *lb_pair_info.owner == amm_program_id || *lb_pair_info.owner == curve_program_id,
         SkyeLadderError::InvalidPool
     );
 
@@ -126,10 +160,47 @@ fn load_wallet_record_mut(account: &AccountInfo) -> Result<WalletRecord> {
         });
     }
     // Try to deserialize. If the layout changed (migration), return empty record.
-    // Old positions are lost but new buys create proper positions.
     let mut slice: &[u8] = &data;
     match WalletRecord::try_deserialize(&mut slice) {
-        Ok(record) => Ok(record),
+        Ok(record) => {
+            // Sanity check: detect corrupt records from layout migration.
+            // Total supply is 1B tokens = 10^18 raw. Any position with
+            // token_balance > 10^18 is impossible and means garbled data.
+            let max_raw: u64 = 1_000_000_000_000_000_000;
+            // Max realistic entry_price: 1 SOL/token = 1e18 in PRICE_SCALE.
+            // Anything above this is from a corrupt merge.
+            let max_entry_price: u64 = PRICE_SCALE as u64; // 1 SOL per token
+            let corrupt = record.positions.iter().any(|p| {
+                p.token_balance > max_raw
+                || p.original_balance > max_raw
+                || p.entry_price == 0
+                || p.entry_price > max_entry_price
+                // Detect stale positions: original vastly exceeds balance (>100x)
+                // means the original_balance tracking drifted from reality
+                || (p.original_balance > 0 && p.token_balance > 0
+                    && p.original_balance / p.token_balance.max(1) > 100)
+            });
+            if corrupt {
+                // Filter out corrupt/stale positions, keep valid ones
+                let clean: Vec<_> = record.positions.into_iter()
+                    .filter(|p| {
+                        p.token_balance <= max_raw
+                        && p.original_balance <= max_raw
+                        && p.entry_price > 0
+                        && p.entry_price <= max_entry_price
+                        && (p.original_balance == 0
+                            || p.original_balance / p.token_balance.max(1) <= 100)
+                    })
+                    .collect();
+                Ok(WalletRecord {
+                    position_count: clean.len() as u8,
+                    positions: clean,
+                    ..record
+                })
+            } else {
+                Ok(record)
+            }
+        },
         Err(_) => Ok(WalletRecord {
             owner: account.key(),
             mint: Pubkey::default(),

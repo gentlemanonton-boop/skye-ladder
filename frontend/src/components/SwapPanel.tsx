@@ -61,15 +61,17 @@ export function SwapPanel({ currentPrice, solUsd }: Props) {
     setAmount((Math.floor(maxSellableHuman * pct * 10000) / 10000).toString());
   }
 
-  async function doSwap(raw: bigint, isBuy: boolean) {
+  async function doSwap(raw: bigint, isBuy: boolean, minOut?: bigint) {
     if (!publicKey || raw <= 0n) return;
-    await swap(raw, isBuy);
+    await swap(raw, isBuy, minOut ?? 0n);
     setAmount("");
   }
 
   async function handleSubmit() {
     if (amountNum <= 0) return;
-    await doSwap(buy ? BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL)) : BigInt(Math.floor(amountNum * 10 ** DECIMALS)), buy);
+    // 5% slippage tolerance
+    const minOut = BigInt(Math.floor(outputAmount * 0.95));
+    await doSwap(buy ? BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL)) : BigInt(Math.floor(amountNum * 10 ** DECIMALS)), buy, minOut);
   }
 
   const hasPositions = positions.length > 0 && totalHeld > 0;
@@ -87,9 +89,9 @@ export function SwapPanel({ currentPrice, solUsd }: Props) {
       </div>
 
       <div className="p-4 sm:p-5 pt-3 sm:pt-4 space-y-4">
-        {/* Take Initial */}
-        {!buy && publicKey && hasPositions && initialBack.tokensRaw > 0 && (
-          <button onClick={() => doSwap(BigInt(initialBack.tokensRaw), false)} disabled={pending}
+        {/* Take Initial — always visible when user has positions in profit */}
+        {publicKey && hasPositions && initialBack.tokensRaw > 0 && (
+          <button onClick={() => { setBuy(false); doSwap(BigInt(initialBack.tokensRaw), false); }} disabled={pending}
             className="w-full py-4 rounded-xl bg-gradient-to-r from-skye-500 to-skye-600 hover:from-skye-600 hover:to-skye-700 text-white font-semibold text-[14px] sm:text-[15px] shadow-soft transition-all active:scale-[0.98] disabled:opacity-50 min-h-[52px]">
             {pending ? "Confirming..." : `Take Initial Back (${initialBackSol.toFixed(4)} SOL · ${formatUsd(initialBackSol * solUsd, 2)})`}
           </button>
@@ -153,10 +155,6 @@ export function SwapPanel({ currentPrice, solUsd }: Props) {
               <span className={`font-medium ${priceImpactPct > 5 ? "text-rose-400" : priceImpactPct > 2 ? "text-amber-400" : "text-ink-tertiary"}`}>
                 {priceImpactPct.toFixed(2)}%
               </span>
-            </div>
-            <div className="flex justify-between text-[12px]">
-              <span className="text-ink-faint">Fee (1%)</span>
-              <span className="text-ink-faint">{buy ? (amountNum * 0.01).toFixed(6) + " SOL" : formatTokens(amountNum * 0.01 * 10 ** DECIMALS, 0) + " SKYE"}</span>
             </div>
           </div>
         )}

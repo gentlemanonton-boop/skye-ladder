@@ -1,27 +1,21 @@
 import { useCallback, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
-  PublicKey,
-  SystemProgram,
-  Transaction,
-  LAMPORTS_PER_SOL,
+  PublicKey, SystemProgram, LAMPORTS_PER_SOL,
+  TransactionInstruction, TransactionMessage, VersionedTransaction,
 } from "@solana/web3.js";
 import {
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  NATIVE_MINT,
-  getAssociatedTokenAddressSync,
-  createAssociatedTokenAccountInstruction,
-  createSyncNativeInstruction,
-  createCloseAccountInstruction,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, NATIVE_MINT,
+  getAssociatedTokenAddressSync, createAssociatedTokenAccountInstruction,
+  createSyncNativeInstruction, createCloseAccountInstruction, ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { Program, AnchorProvider, BN } from "@coral-xyz/anchor";
-import ammIdl from "../idl/skye_amm.json";
+import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
 import { SKYE_MINT, SKYE_LADDER_PROGRAM_ID } from "../constants";
-import { getPoolPDA, getWalletRecordPDA } from "../lib/pda";
-import { deriveHookAccounts } from "../lib/hookAccounts";
+import { getCurvePDA, getWalletRecordPDA, getConfigPDA, getExtraMetasPDA } from "../lib/pda";
+
+const SKYE_CURVE_ID = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
+const SWAP_DISC = new Uint8Array([248,198,158,145,225,117,135,200]);
 
 export function useSwap() {
   const { connection } = useConnection();
@@ -33,141 +27,102 @@ export function useSwap() {
   const swap = useCallback(
     async (amountRaw: bigint, buy: boolean, minOut: bigint = 0n) => {
       if (!publicKey || !sendTransaction) return;
-      setPending(true);
-      setError(null);
-      setLastTx(null);
+      setPending(true); setError(null); setLastTx(null);
 
       try {
-        const provider = new AnchorProvider(
-          connection,
-          { publicKey, signTransaction: null, signAllTransactions: null } as any,
-          { commitment: "confirmed" }
-        );
-        const ammProgram = new Program(ammIdl as any, provider);
-        const ladderProgram = new Program(ladderIdl as any, provider);
+        const [curvePDA] = getCurvePDA();
+        const tokenReserve = getAssociatedTokenAddressSync(SKYE_MINT, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const solReserve = getAssociatedTokenAddressSync(NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const userToken = getAssociatedTokenAddressSync(SKYE_MINT, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
 
-        const [poolPDA] = getPoolPDA();
-        const skyeReserve = getAssociatedTokenAddressSync(
-          SKYE_MINT, poolPDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const wsolReserve = getAssociatedTokenAddressSync(
-          NATIVE_MINT, poolPDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const userSkyeATA = getAssociatedTokenAddressSync(
-          SKYE_MINT, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const userWsolATA = getAssociatedTokenAddressSync(
-          NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-
-        // ── Check which accounts need creation ──
-        const [skyeInfo, wsolInfo, buyerWRInfo, poolWRInfo] = await Promise.all([
-          connection.getAccountInfo(userSkyeATA),
-          connection.getAccountInfo(userWsolATA),
+        const [tokenInfo, wsolInfo, buyerWRInfo] = await Promise.all([
+          connection.getAccountInfo(userToken),
+          connection.getAccountInfo(userWsol),
           connection.getAccountInfo(getWalletRecordPDA(publicKey)[0]),
-          connection.getAccountInfo(getWalletRecordPDA(poolPDA)[0]),
         ]);
 
-        const setupIxs: any[] = [];
+        const ixs: TransactionInstruction[] = [];
 
-        if (!skyeInfo) {
-          setupIxs.push(createAssociatedTokenAccountInstruction(
-            publicKey, userSkyeATA, publicKey, SKYE_MINT,
-            TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
-        }
-        if (!wsolInfo) {
-          setupIxs.push(createAssociatedTokenAccountInstruction(
-            publicKey, userWsolATA, publicKey, NATIVE_MINT,
-            TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
-        }
+        if (!tokenInfo) ixs.push(createAssociatedTokenAccountInstruction(publicKey, userToken, publicKey, SKYE_MINT, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+        if (!wsolInfo) ixs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
 
         const [buyerWR] = getWalletRecordPDA(publicKey);
         if (!buyerWRInfo) {
-          setupIxs.push(await (ladderProgram.methods as any)
-            .createWalletRecord()
-            .accounts({ payer: publicKey, wallet: publicKey, mint: SKYE_MINT,
-              walletRecord: buyerWR, systemProgram: SystemProgram.programId })
-            .instruction());
+          const provider = new AnchorProvider(connection, { publicKey, signTransaction: null, signAllTransactions: null } as any, { commitment: "confirmed" });
+          const ladderProgram = new Program(ladderIdl as any, provider);
+          ixs.push(await (ladderProgram.methods as any).createWalletRecord()
+            .accounts({ payer: publicKey, wallet: publicKey, mint: SKYE_MINT, walletRecord: buyerWR, systemProgram: SystemProgram.programId }).instruction());
         }
-
-        const [poolWR] = getWalletRecordPDA(poolPDA);
-        if (!poolWRInfo) {
-          setupIxs.push(await (ladderProgram.methods as any)
-            .createWalletRecord()
-            .accounts({ payer: publicKey, wallet: poolPDA, mint: SKYE_MINT,
-              walletRecord: poolWR, systemProgram: SystemProgram.programId })
-            .instruction());
-        }
-
-        // ── Build swap instructions ──
-        const swapIxs: any[] = [];
 
         if (buy) {
-          swapIxs.push(
-            SystemProgram.transfer({
-              fromPubkey: publicKey, toPubkey: userWsolATA, lamports: Number(amountRaw),
-            }),
-            createSyncNativeInstruction(userWsolATA, TOKEN_PROGRAM_ID),
+          ixs.push(
+            SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: userWsol, lamports: Number(amountRaw) }),
+            createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
           );
         }
 
-        const senderOwner = buy ? poolPDA : publicKey;
-        const receiverOwner = buy ? publicKey : poolPDA;
-        const hookAccounts = deriveHookAccounts(senderOwner, receiverOwner);
+        const [configPDA] = getConfigPDA();
+        const [extraMetasPDA] = getExtraMetasPDA();
+        const [curveWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), curvePDA.toBuffer(), SKYE_MINT.toBuffer()], SKYE_LADDER_PROGRAM_ID);
+        const senderWR = buy ? curveWR : buyerWR;
+        const receiverWR = buy ? buyerWR : curveWR;
 
-        swapIxs.push(await (ammProgram.methods as any)
-          .swap(new BN(amountRaw.toString()), new BN(minOut.toString()), buy)
-          .accounts({
-            user: publicKey, pool: poolPDA, skyeMint: SKYE_MINT, wsolMint: NATIVE_MINT,
-            userSkyeAccount: userSkyeATA, userWsolAccount: userWsolATA,
-            skyeReserve, wsolReserve,
-            token2022Program: TOKEN_2022_PROGRAM_ID, tokenProgram: TOKEN_PROGRAM_ID,
-          })
-          .remainingAccounts(hookAccounts)
-          .instruction());
+        const hookAccounts = [
+          { pubkey: configPDA, isSigner: false, isWritable: false },
+          { pubkey: senderWR, isSigner: false, isWritable: true },
+          { pubkey: receiverWR, isSigner: false, isWritable: true },
+          { pubkey: curvePDA, isSigner: false, isWritable: false },
+          { pubkey: SKYE_LADDER_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
+        ];
 
-        // ── Decide: one tx or two? ──
-        // If setup instructions exist, try fitting everything in one tx.
-        // Only split if we have 4+ setup ixs (unlikely after first trade).
-        const needsSeparateSetup = setupIxs.length >= 4;
+        const swapData = Buffer.alloc(8 + 8 + 8 + 1);
+        swapData.set(SWAP_DISC, 0);
+        swapData.writeBigUInt64LE(amountRaw, 8);
+        swapData.writeBigUInt64LE(minOut, 16);
+        swapData[24] = buy ? 1 : 0;
 
-        if (needsSeparateSetup) {
-          // First-time user: send setup tx, then swap tx
-          const setupTx = new Transaction().add(...setupIxs);
-          setupTx.feePayer = publicKey;
-          setupTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-          const setupSig = await sendTransaction(setupTx, connection);
-          await connection.confirmTransaction(setupSig, "confirmed");
+        ixs.push(new TransactionInstruction({
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: curvePDA, isSigner: false, isWritable: true },
+            { pubkey: SKYE_MINT, isSigner: false, isWritable: false },
+            { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+            { pubkey: userToken, isSigner: false, isWritable: true },
+            { pubkey: userWsol, isSigner: false, isWritable: true },
+            { pubkey: tokenReserve, isSigner: false, isWritable: true },
+            { pubkey: solReserve, isSigner: false, isWritable: true },
+            { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            ...hookAccounts,
+          ],
+          programId: SKYE_CURVE_ID,
+          data: swapData,
+        }));
 
-          const swapTx = new Transaction().add(...swapIxs);
-          swapTx.feePayer = publicKey;
-          swapTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-          const sig = await sendTransaction(swapTx, connection);
-          await connection.confirmTransaction(sig, "confirmed");
-          setLastTx(sig);
-        } else {
-          // One transaction: setup (if any) + swap
-          const tx = new Transaction();
-          for (const ix of setupIxs) tx.add(ix);
-          for (const ix of swapIxs) tx.add(ix);
-          tx.feePayer = publicKey;
-          tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-          const sig = await sendTransaction(tx, connection);
-          await connection.confirmTransaction(sig, "confirmed");
-          setLastTx(sig);
+        // After sell: close WSOL ATA to unwrap back to native SOL
+        if (!buy) {
+          ixs.push(createCloseAccountInstruction(userWsol, publicKey, publicKey, [], TOKEN_PROGRAM_ID));
         }
+
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+        const messageV0 = new TransactionMessage({
+          payerKey: publicKey,
+          recentBlockhash: blockhash,
+          instructions: ixs,
+        }).compileToV0Message();
+        const vtx = new VersionedTransaction(messageV0);
+
+        const sig = await sendTransaction(vtx, connection);
+        await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+        setLastTx(sig);
       } catch (e: any) {
         let msg = "Transaction failed";
-        if (e?.message?.includes("SellExceedsUnlocked")) {
-          msg = "Sell amount exceeds your unlocked tokens.";
-        } else if (e?.message?.includes("User rejected")) {
-          msg = "Transaction cancelled.";
-        } else if (e?.message?.includes("insufficient funds")) {
-          msg = "Insufficient SOL balance.";
-        } else if (e?.message?.includes("0x1")) {
-          msg = "Insufficient token balance.";
-        } else if (e?.logs) {
-          const errLog = e.logs.find((l: string) => l.includes("Error") || l.includes("failed"));
-          msg = errLog || e.message || msg;
-        } else if (e?.message) {
-          msg = e.message;
-        }
+        if (e?.message?.includes("SellExceedsUnlocked")) msg = "Sell amount exceeds unlocked tokens.";
+        else if (e?.message?.includes("User rejected")) msg = "Transaction cancelled.";
+        else if (e?.message?.includes("insufficient funds")) msg = "Insufficient SOL.";
+        else if (e?.message) msg = e.message;
         console.error("Swap error:", e);
         setError(msg);
       }

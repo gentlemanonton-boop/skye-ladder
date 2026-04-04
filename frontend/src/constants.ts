@@ -11,7 +11,7 @@ export const SKYE_AMM_PROGRAM_ID = new PublicKey(
   "GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX"
 );
 export const SKYE_MINT = new PublicKey(
-  "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j"
+  "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF"
 );
 export const WSOL_MINT = NATIVE_MINT;
 export const DECIMALS = 9;

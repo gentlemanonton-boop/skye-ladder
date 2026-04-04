@@ -16,6 +16,7 @@ skye_amm = "GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX"
 [programs.mainnet]
 skye_ladder = "4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz"
 skye_amm = "GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX"
+skye_curve = "5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf"
 
 [registry]
 url = "https://api.apr.dev"

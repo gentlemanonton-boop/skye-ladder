@@ -76,18 +76,13 @@ export function AboutTab() {
         }} />
       </div>
 
-      {/* Founder */}
-      <div className="glass p-6 text-center space-y-3">
-        <h3 className="font-pixel text-[10px] sm:text-[11px] text-purple-400 mb-3 tracking-wider">BUILT BY</h3>
-        <p className="text-[20px] font-bold text-ink-primary">double07</p>
-        <p className="text-[13px] text-ink-tertiary max-w-sm mx-auto leading-relaxed">
-          Tired of watching every token die the same way. Built Skye to prove that structured sell restrictions can break the cycle. No VC money. No team tokens vesting. Just code that enforces what promises can't.
-        </p>
-        <div className="flex justify-center gap-4 pt-2">
+      {/* Links */}
+      <div className="glass p-6 text-center">
+        <div className="flex justify-center gap-6">
           <a href="https://github.com/gentlemanonton-boop/skye-ladder" target="_blank" rel="noopener noreferrer"
-            className="text-[12px] text-skye-400 hover:underline font-semibold">GitHub</a>
+            className="text-[13px] text-skye-400 hover:underline font-semibold">GitHub</a>
           <a href="https://solscan.io/token/4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j" target="_blank" rel="noopener noreferrer"
-            className="text-[12px] text-skye-400 hover:underline font-semibold">Solscan</a>
+            className="text-[13px] text-skye-400 hover:underline font-semibold">Solscan</a>
         </div>
       </div>
 

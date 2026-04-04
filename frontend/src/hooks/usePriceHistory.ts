@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { getPoolPDA } from "../lib/pda";
+import { getCurvePDA } from "../lib/pda";
 
 export interface PricePoint {
   time: number;
   price: number;
 }
 
-const STORAGE_KEY = "skye_price_history_v2";
+const STORAGE_KEY = "skye_price_history_v3";
 const MAX_POINTS = 8640;
 
 function load(): PricePoint[] {
@@ -41,14 +41,14 @@ export function usePriceHistory() {
   }, []);
 
   useEffect(() => {
-    const [poolPDA] = getPoolPDA();
+    const [poolPDA] = getCurvePDA();
 
     // Read price from raw account data — no Anchor deserialization needed
     function readPrice(data: Buffer): number | null {
-      if (data.length < 216) return null;
+      if (data.length < 184) return null;
       try {
-        const skye = Number(data.readBigUInt64LE(200));
-        const wsol = Number(data.readBigUInt64LE(208));
+        const skye = Number(data.readBigUInt64LE(168));
+        const wsol = Number(data.readBigUInt64LE(176));
         if (skye > 0 && wsol > 0) return wsol / skye;
       } catch {}
       return null;

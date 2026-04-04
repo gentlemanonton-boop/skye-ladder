@@ -1,16 +1,18 @@
 import { PublicKey } from "@solana/web3.js";
 import { SKYE_AMM_PROGRAM_ID, SKYE_LADDER_PROGRAM_ID, SKYE_MINT, WSOL_MINT } from "../constants";
 
-export function getPoolPDA(): [PublicKey, number] {
+const SKYE_CURVE_ID = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
+
+export function getCurvePDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("pool"), SKYE_MINT.toBuffer(), WSOL_MINT.toBuffer()],
-    SKYE_AMM_PROGRAM_ID
+    [Buffer.from("curve"), SKYE_MINT.toBuffer()],
+    SKYE_CURVE_ID
   );
 }
 
-export function getLpAuthority(poolPDA: PublicKey): [PublicKey, number] {
+export function getPoolPDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("lp-authority"), poolPDA.toBuffer()],
+    [Buffer.from("pool"), SKYE_MINT.toBuffer(), WSOL_MINT.toBuffer()],
     SKYE_AMM_PROGRAM_ID
   );
 }

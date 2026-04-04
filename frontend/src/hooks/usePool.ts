@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { Program, AnchorProvider } from "@coral-xyz/anchor";
-import { getPoolPDA } from "../lib/pda";
-import ammIdl from "../idl/skye_amm.json";
+import { getCurvePDA } from "../lib/pda";
 
 export interface PoolState {
   skyeAmount: number;
@@ -19,35 +17,34 @@ export function usePool() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const [poolPDA] = getPoolPDA();
+    const [curvePDA] = getCurvePDA();
 
-    async function fetchPool() {
+    async function fetchCurve() {
       try {
-        const provider = new AnchorProvider(
-          connection,
-          { publicKey: null, signTransaction: null, signAllTransactions: null } as any,
-          { commitment: "confirmed" }
-        );
-        const program = new Program(ammIdl as any, provider);
-        const account = await program.account.pool.fetch(poolPDA);
+        const info = await connection.getAccountInfo(curvePDA);
+        if (!info || info.data.length < 184) {
+          setError("Curve not found");
+          setLoading(false);
+          return;
+        }
+        const d = info.data;
         setPool({
-          skyeAmount: Number(account.skyeAmount),
-          wsolAmount: Number(account.wsolAmount),
-          feeBps: account.feeBps,
-          skyeReserve: account.skyeReserve.toBase58(),
-          wsolReserve: account.wsolReserve.toBase58(),
+          skyeAmount: Number(d.readBigUInt64LE(168)),
+          wsolAmount: Number(d.readBigUInt64LE(176)),
+          feeBps: 100,
+          skyeReserve: curvePDA.toBase58(),
+          wsolReserve: curvePDA.toBase58(),
         });
         setError(null);
       } catch (e: any) {
-        console.error("Failed to fetch pool:", e);
-        setError(e?.message || "Failed to load pool data");
+        console.error("Failed to fetch curve:", e);
+        setError(e?.message || "Failed to load");
       }
       setLoading(false);
     }
 
-    fetchPool();
-
-    const sub = connection.onAccountChange(poolPDA, () => fetchPool(), "confirmed");
+    fetchCurve();
+    const sub = connection.onAccountChange(curvePDA, () => fetchCurve(), "confirmed");
     return () => { connection.removeAccountChangeListener(sub); };
   }, [connection]);
 

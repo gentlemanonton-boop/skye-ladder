@@ -4,6 +4,11 @@ members = [
 ]
 resolver = "2"
 
+# Pin crates to avoid edition2024 versions incompatible with
+# the solana-verify Docker image (Cargo 1.75)
+[workspace.dependencies]
+blake3 = "=1.5.5"
+
 [profile.release]
 overflow-checks = true
 lto = "fat"

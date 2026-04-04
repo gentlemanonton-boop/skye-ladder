@@ -11,9 +11,12 @@ import { TierBreakdown } from "./components/TierBreakdown";
 import { ActivityTab } from "./components/ActivityTab";
 import { ChartTab } from "./components/ChartTab";
 import { AboutTab } from "./components/AboutTab";
+import { TradeFlash } from "./components/TradeFlash";
+import { LaunchTab } from "./components/LaunchTab";
+import { DiscoverTab } from "./components/DiscoverTab";
 
 const LOGO = "https://gateway.irys.xyz/YkvolVl__ug43pWw3H-cYF2vLN_zE_1LRt6FjcYmkcc";
-type Tab = "trade" | "chart" | "activity" | "about";
+type Tab = "trade" | "chart" | "launch" | "discover" | "about";
 
 class SafeChart extends React.Component<{}, { err: boolean }> {
   state = { err: false };
@@ -66,7 +69,8 @@ export default function App() {
           {([
             { id: "trade" as Tab, label: "Trade" },
             { id: "chart" as Tab, label: "Chart" },
-            { id: "activity" as Tab, label: "Activity" },
+            { id: "launch" as Tab, label: "Launch" },
+            { id: "discover" as Tab, label: "Discover" },
             { id: "about" as Tab, label: "About" },
           ]).map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
@@ -102,14 +106,22 @@ export default function App() {
               </>
             )}
             {tab === "chart" && <SafeChart><ChartTab /></SafeChart>}
-            {tab === "activity" && <ActivityTab />}
+            {tab === "launch" && <LaunchTab />}
+            {tab === "discover" && <DiscoverTab />}
             {tab === "about" && <AboutTab />}
           </>
         )}
       </main>
 
-      <footer className="border-t border-white/5 py-6 text-center text-[11px] sm:text-[12px] text-ink-faint px-4">
-        Structured sell restrictions on Solana &middot; Token-2022 Transfer Hook
+      <TradeFlash />
+
+      <footer className="border-t border-white/5 py-6 text-center px-4 space-y-2">
+        <p className="text-[11px] sm:text-[12px] text-ink-faint">
+          Structured sell restrictions on Solana &middot; Token-2022 Transfer Hook
+        </p>
+        <p className="font-pixel text-[7px] sm:text-[8px] text-ink-faint/50 break-all">
+          CA: 5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF
+        </p>
       </footer>
     </div>
   );

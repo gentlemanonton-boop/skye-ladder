@@ -189,19 +189,35 @@ fn merge_into_position(
     _current_price: u64,
     new_initial_sol: u64,
 ) -> Result<()> {
-    let old_cost = existing.initial_sol as u128;
-    let new_cost = new_initial_sol as u128;
-    let total_cost = old_cost
-        .checked_add(new_cost)
-        .ok_or(SkyeLadderError::MathOverflow)?;
-
-    let old_tokens = existing.token_balance as u128;
     let new_tokens = tokens_bought as u128;
+    let old_tokens = existing.token_balance as u128;
     let total_tokens = old_tokens
         .checked_add(new_tokens)
         .ok_or(SkyeLadderError::MathOverflow)?;
 
-    // Weighted average entry price = total_cost * PRICE_SCALE / total_tokens
+    // Scale old initial_sol proportionally to remaining tokens.
+    // If position was partially sold, old initial_sol is stale (covers tokens already gone).
+    // Proportional: old_sol_remaining = old_initial_sol * old_token_balance / old_original_balance
+    let old_original = if existing.original_balance >= existing.token_balance && existing.original_balance > 0 {
+        existing.original_balance as u128
+    } else {
+        old_tokens
+    };
+    let old_cost_proportional = if old_original > 0 {
+        (existing.initial_sol as u128)
+            .checked_mul(old_tokens)
+            .ok_or(SkyeLadderError::MathOverflow)?
+            .checked_div(old_original)
+            .ok_or(SkyeLadderError::MathOverflow)?
+    } else {
+        0u128
+    };
+
+    let total_cost = old_cost_proportional
+        .checked_add(new_initial_sol as u128)
+        .ok_or(SkyeLadderError::MathOverflow)?;
+
+    // Weighted average entry price
     let new_entry = total_cost
         .checked_mul(PRICE_SCALE)
         .ok_or(SkyeLadderError::MathOverflow)?
@@ -211,17 +227,10 @@ fn merge_into_position(
     existing.entry_price = new_entry as u64;
     existing.initial_sol = total_cost as u64;
     existing.token_balance = total_tokens as u64;
-    // Merge original_balance: sum of both originals (new buy's original = tokens_bought)
-    let old_original = if existing.original_balance > 0 {
-        existing.original_balance as u128
-    } else {
-        old_tokens // legacy fallback
-    };
-    existing.original_balance = old_original
-        .checked_add(new_tokens)
-        .ok_or(SkyeLadderError::MathOverflow)? as u64;
-    // Dirty flag: existing keeps its flag (new buy is always clean)
-    // claimed stays as-is (new buy doesn't affect claim status)
+    // Reset original_balance to new total — fresh combined position
+    existing.original_balance = total_tokens as u64;
+    // Reset unlocked_bps since this is effectively a new position
+    existing.unlocked_bps = 0;
 
     Ok(())
 }
