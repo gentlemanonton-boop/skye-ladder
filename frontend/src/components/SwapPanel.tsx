@@ -266,6 +266,7 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
   side: "pay" | "receive";
 }) {
   const [search, setSearch] = useState("");
+  const [showDust, setShowDust] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -280,9 +281,11 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
 
   const solUsdVal = (solBalance ?? 0) * solUsd;
 
-  // Filter: hide < $10, apply search
+  const dustCount = allTokens.filter(t => (t.usdValue ?? 0) < 10 && t.symbol !== "SKYE").length;
+
+  // Filter: hide < $10 unless dust toggle is on, apply search
   const filtered = allTokens
-    .filter(t => (t.usdValue ?? 0) >= 10)
+    .filter(t => showDust || (t.usdValue ?? 0) >= 10)
     .filter(t => {
       if (!search) return true;
       const q = search.toLowerCase();
@@ -379,6 +382,21 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
           <div className="text-center text-[13px] text-ink-faint py-8">No tokens found</div>
         )}
       </div>
+
+      {/* Dust toggle */}
+      {dustCount > 0 && (
+        <div className="p-3 border-t border-white/5">
+          <button
+            onClick={() => setShowDust(!showDust)}
+            className="w-full flex items-center justify-center gap-2 py-2 text-[12px] text-ink-faint hover:text-ink-tertiary transition-colors"
+          >
+            <div className={`w-3.5 h-3.5 rounded border transition-colors flex items-center justify-center ${showDust ? "bg-skye-500 border-skye-500" : "border-white/20"}`}>
+              {showDust && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+            </div>
+            Show dust ({dustCount} tokens &lt;$10)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
