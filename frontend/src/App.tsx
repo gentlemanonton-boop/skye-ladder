@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { usePool } from "./hooks/usePool";
 import { useWalletRecord } from "./hooks/useWalletRecord";
 import { useSolPrice } from "./hooks/useSolPrice";
@@ -32,6 +33,7 @@ export default function App() {
   const { positions } = useWalletRecord();
   const solUsd = useSolPrice();
   const { solBalance, skyeBalance } = useBalances();
+  const { connected, disconnect, publicKey } = useWallet();
   const [tab, setTab] = useState<Tab>("trade");
 
   const currentPrice = pool ? pool.wsolAmount / pool.skyeAmount : 0;
@@ -56,10 +58,20 @@ export default function App() {
               )}
             </div>
           </div>
-          {solBalance !== null && (
+          {connected && solBalance !== null && (
               <span className="text-[12px] text-ink-tertiary tabular-nums hidden sm:inline">{solBalance.toFixed(3)} SOL</span>
             )}
-            <WalletMultiButton />
+            {connected ? (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-ink-faint hidden sm:inline font-mono">{publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}</span>
+                <button onClick={() => { disconnect(); localStorage.removeItem("walletName"); }}
+                  className="px-3 py-1.5 text-[12px] font-semibold text-ink-tertiary bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <WalletMultiButton />
+            )}
         </div>
       </header>
 
