@@ -15,6 +15,7 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
   const { solBalance, allTokens } = useBalances();
   const { pool } = usePool();
   const [showAll, setShowAll] = useState(false);
+  const [showDust, setShowDust] = useState(false);
 
   if (!publicKey) return null;
 
@@ -127,21 +128,36 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
         )}
 
         {/* Other Tokens */}
-        {hasOtherTokens && (
-          <div className="mt-3 pt-3 border-t border-white/5">
-            {(showAll ? allTokens : allTokens.slice(0, 3)).map((token) => (
-              <TokenRow key={token.mint} token={token} />
-            ))}
-            {allTokens.length > 3 && (
-              <button
-                onClick={() => setShowAll(!showAll)}
-                className="w-full py-2 text-[12px] text-skye-400 font-semibold hover:underline"
-              >
-                {showAll ? "Show less" : `Show all (${allTokens.length} tokens)`}
-              </button>
-            )}
-          </div>
-        )}
+        {hasOtherTokens && (() => {
+          const filtered = showDust ? allTokens : allTokens.filter(t => (t.usdValue ?? 0) >= 1);
+          const dustCount = allTokens.length - allTokens.filter(t => (t.usdValue ?? 0) >= 1).length;
+          const visible = showAll ? filtered : filtered.slice(0, 5);
+          return (
+            <div className="mt-3 pt-3 border-t border-white/5">
+              {visible.map((token) => (
+                <TokenRow key={token.mint} token={token} />
+              ))}
+              <div className="flex items-center justify-between pt-1">
+                {filtered.length > 5 && (
+                  <button
+                    onClick={() => setShowAll(!showAll)}
+                    className="text-[12px] text-skye-400 font-semibold hover:underline"
+                  >
+                    {showAll ? "Show less" : `Show all (${filtered.length})`}
+                  </button>
+                )}
+                {dustCount > 0 && (
+                  <button
+                    onClick={() => setShowDust(!showDust)}
+                    className="text-[11px] text-ink-faint hover:text-ink-tertiary ml-auto"
+                  >
+                    {showDust ? "Hide dust" : `+${dustCount} dust (<$1)`}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -169,7 +185,9 @@ function TokenRow({ token }: { token: TokenBalance }) {
       </div>
       <div className="text-right tabular-nums">
         <div className="text-[13px] font-semibold text-ink-primary">{token.uiAmount}</div>
-        <div className="text-[10px] text-ink-faint font-mono">{token.mint.slice(0, 4)}...{token.mint.slice(-4)}</div>
+        <div className="text-[10px] text-ink-faint">
+          {token.usdValue !== undefined ? `$${token.usdValue < 0.01 ? token.usdValue.toExponential(1) : token.usdValue.toFixed(2)}` : token.mint.slice(0, 4) + "..." + token.mint.slice(-4)}
+        </div>
       </div>
     </div>
   );
