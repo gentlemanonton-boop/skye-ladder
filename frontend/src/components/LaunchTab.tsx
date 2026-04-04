@@ -23,7 +23,7 @@ export function LaunchTab() {
   const { connection } = useConnection();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
-  const [supply, setSupply] = useState(DEFAULT_SUPPLY.toString());
+  const supply = DEFAULT_SUPPLY.toString();
   const [description, setDescription] = useState("");
   const [website, setWebsite] = useState("");
   const [twitter, setTwitter] = useState("");
@@ -237,11 +237,12 @@ export function LaunchTab() {
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition resize-none" />
         </div>
 
-        {/* Supply */}
+        {/* Supply — fixed */}
         <div>
           <label className="text-[12px] font-medium text-ink-tertiary mb-1 block">Total Supply</label>
-          <input type="number" value={supply} onChange={e => setSupply(e.target.value)} disabled={isLaunching}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[44px]" />
+          <div className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-ink-faint min-h-[44px]">
+            {Number(supply).toLocaleString()} (fixed)
+          </div>
         </div>
 
         {/* Socials */}
