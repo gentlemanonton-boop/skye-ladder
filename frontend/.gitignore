@@ -1,2 +1,3 @@
 .vercel
 frontend/dist/
+.env*.local

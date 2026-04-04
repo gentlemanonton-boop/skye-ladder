@@ -3,16 +3,16 @@ import { usePool } from "./hooks/usePool";
 import { useWalletRecord } from "./hooks/useWalletRecord";
 import { useSolPrice } from "./hooks/useSolPrice";
 import { formatUsd } from "./lib/format";
-import { PriceChart } from "./components/PriceChart";
 import { SwapPanel } from "./components/SwapPanel";
 import { UnlockProgress } from "./components/UnlockProgress";
 import { TierBreakdown } from "./components/TierBreakdown";
 import { ActivityButton } from "./components/Activity";
+import { ChartButton } from "./components/ChartModal";
 
 const LOGO = "https://gateway.irys.xyz/7KOIQD6D5bArYKAyOz8xtSmDDGKV7DbMOLo4oUhOlHI";
 
 export default function App() {
-  const { pool, loading } = usePool();
+  const { pool, loading, error: poolError } = usePool();
   const { positions } = useWalletRecord();
   const solUsd = useSolPrice();
 
@@ -39,6 +39,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            <ChartButton />
             <ActivityButton />
             <WalletMultiButton />
           </div>
@@ -50,9 +51,16 @@ export default function App() {
           <div className="flex items-center justify-center py-24">
             <div className="text-ink-tertiary text-[14px]">Loading pool...</div>
           </div>
+        ) : poolError ? (
+          <div className="bg-surface-card rounded-2xl border border-gray-200/80 p-8 text-center space-y-3">
+            <p className="text-ink-primary font-semibold">Failed to load pool</p>
+            <p className="text-ink-tertiary text-[13px]">{poolError}</p>
+            <button onClick={() => window.location.reload()} className="text-skye-500 text-[13px] font-semibold hover:underline">
+              Retry
+            </button>
+          </div>
         ) : (
           <>
-            <PriceChart />
             <SwapPanel currentPrice={currentPrice} solUsd={solUsd} />
             <UnlockProgress positions={positions} currentPrice={currentPrice} />
             <TierBreakdown positions={positions} currentPrice={currentPrice} />

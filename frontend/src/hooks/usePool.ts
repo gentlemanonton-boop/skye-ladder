@@ -3,7 +3,6 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import { getPoolPDA } from "../lib/pda";
 import ammIdl from "../idl/skye_amm.json";
-import { SKYE_AMM_PROGRAM_ID } from "../constants";
 
 export interface PoolState {
   skyeAmount: number;
@@ -17,11 +16,12 @@ export function usePool() {
   const { connection } = useConnection();
   const [pool, setPool] = useState<PoolState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const [poolPDA] = getPoolPDA();
 
-    async function fetch() {
+    async function fetchPool() {
       try {
         const provider = new AnchorProvider(
           connection,
@@ -37,17 +37,19 @@ export function usePool() {
           skyeReserve: account.skyeReserve.toBase58(),
           wsolReserve: account.wsolReserve.toBase58(),
         });
-      } catch (e) {
+        setError(null);
+      } catch (e: any) {
         console.error("Failed to fetch pool:", e);
+        setError(e?.message || "Failed to load pool data");
       }
       setLoading(false);
     }
 
-    fetch();
+    fetchPool();
 
-    const sub = connection.onAccountChange(poolPDA, () => fetch(), "confirmed");
+    const sub = connection.onAccountChange(poolPDA, () => fetchPool(), "confirmed");
     return () => { connection.removeAccountChangeListener(sub); };
   }, [connection]);
 
-  return { pool, loading };
+  return { pool, loading, error };
 }
