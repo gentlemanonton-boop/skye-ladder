@@ -36,10 +36,18 @@ export default function App() {
   const { connected, disconnect, publicKey } = useWallet();
   const [tab, setTab] = useState<Tab>("trade");
 
-  // Clear disconnect flag when a wallet connects
-  useEffect(() => {
-    if (connected) localStorage.removeItem("wallet_disconnected");
-  }, [connected]);
+  async function handleDisconnect() {
+    // 1. Disconnect via adapter
+    await disconnect();
+    // 2. Directly disconnect from Phantom to revoke trusted app status
+    // This forces the approval popup on next connect (lets user pick account)
+    try {
+      const phantom = (window as any)?.phantom?.solana;
+      if (phantom?.disconnect) await phantom.disconnect();
+    } catch {}
+    // 3. Clear stored wallet name so autoConnect doesn't reconnect
+    localStorage.removeItem("walletName");
+  }
 
   const currentPrice = pool ? pool.wsolAmount / pool.skyeAmount : 0;
   const priceUsd = currentPrice * solUsd;
@@ -69,7 +77,7 @@ export default function App() {
             {connected ? (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-ink-faint hidden sm:inline font-mono">{publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}</span>
-                <button onClick={() => { disconnect(); localStorage.setItem("wallet_disconnected", "1"); }}
+                <button onClick={handleDisconnect}
                   className="px-3 py-1.5 text-[12px] font-semibold text-ink-tertiary bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
                   Disconnect
                 </button>

@@ -8,17 +8,18 @@ import {
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import App from "./App";
 import { RPC_URL } from "./constants";
 import "./index.css";
 
-const wallets = [new PhantomWalletAdapter()];
+// Empty array = wallet-standard auto-detects installed wallets (Phantom, Solflare, etc.)
+// This is the modern approach used by Jupiter — gives proper disconnect/reconnect with approval prompts
+const wallets: any[] = [];
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ConnectionProvider endpoint={RPC_URL}>
-      <WalletProvider wallets={wallets} autoConnect={!localStorage.getItem("wallet_disconnected")}>
+      <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <App />
         </WalletModalProvider>
