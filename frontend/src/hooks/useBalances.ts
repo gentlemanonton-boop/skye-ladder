@@ -96,10 +96,22 @@ export function useBalances() {
     }
     const jup = jupRef.current;
 
+    // Hardcoded metadata for common tokens — never depends on Jupiter API
+    const HARDCODED: Record<string, { symbol: string; name: string; decimals: number; logo?: string }> = {
+      [SKYE_MINT.toBase58()]: { symbol: "SKYE", name: "Skye", decimals: DECIMALS, logo: SKYE_META.logoURI },
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": { symbol: "USDC", name: "USD Coin", decimals: 6, logo: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png" },
+      "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": { symbol: "USDT", name: "Tether", decimals: 6, logo: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png" },
+      "So11111111111111111111111111111111111111112": { symbol: "WSOL", name: "Wrapped SOL", decimals: 9, logo: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png" },
+      "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN": { symbol: "JUP", name: "Jupiter", decimals: 6 },
+      "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263": { symbol: "BONK", name: "Bonk", decimals: 5 },
+      "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So": { symbol: "mSOL", name: "Marinade SOL", decimals: 9 },
+      "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn": { symbol: "jitoSOL", name: "Jito SOL", decimals: 9 },
+      "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": { symbol: "ETH", name: "Ethereum (Wormhole)", decimals: 8 },
+    };
+
     function lookupMeta(mint: string): { symbol: string; name: string; decimals: number; logo?: string } {
-      if (mint === SKYE_MINT.toBase58()) {
-        return { symbol: SKYE_META.symbol, name: SKYE_META.name, decimals: SKYE_META.decimals, logo: SKYE_META.logoURI };
-      }
+      const hc = HARDCODED[mint];
+      if (hc) return hc;
       const j = jup.get(mint);
       if (j) return { symbol: j.symbol, name: j.name, decimals: j.decimals, logo: j.logoURI };
       return { symbol: mint.slice(0, 4) + "...", name: "Unknown Token", decimals: 9 };
