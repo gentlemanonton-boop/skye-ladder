@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { usePool } from "./hooks/usePool";
@@ -36,6 +36,11 @@ export default function App() {
   const { connected, disconnect, publicKey } = useWallet();
   const [tab, setTab] = useState<Tab>("trade");
 
+  // Clear disconnect flag when a wallet connects
+  useEffect(() => {
+    if (connected) localStorage.removeItem("wallet_disconnected");
+  }, [connected]);
+
   const currentPrice = pool ? pool.wsolAmount / pool.skyeAmount : 0;
   const priceUsd = currentPrice * solUsd;
   const mcSol = currentPrice * 1e9;
@@ -64,7 +69,7 @@ export default function App() {
             {connected ? (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-ink-faint hidden sm:inline font-mono">{publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}</span>
-                <button onClick={() => { disconnect(); localStorage.removeItem("walletName"); }}
+                <button onClick={() => { disconnect(); localStorage.setItem("wallet_disconnected", "1"); }}
                   className="px-3 py-1.5 text-[12px] font-semibold text-ink-tertiary bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
                   Disconnect
                 </button>

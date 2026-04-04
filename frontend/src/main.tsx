@@ -18,7 +18,7 @@ const wallets = [new PhantomWalletAdapter()];
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ConnectionProvider endpoint={RPC_URL}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={!localStorage.getItem("wallet_disconnected")}>
         <WalletModalProvider>
           <App />
         </WalletModalProvider>
