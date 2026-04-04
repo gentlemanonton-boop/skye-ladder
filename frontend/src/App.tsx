@@ -36,20 +36,13 @@ export default function App() {
   const { connected, disconnect, publicKey } = useWallet();
   const [tab, setTab] = useState<Tab>("trade");
 
-  // Clear disconnect flag when wallet connects so autoConnect works next visit
-  useEffect(() => {
-    if (connected) localStorage.removeItem("wallet_disconnected");
-  }, [connected]);
-
   async function handleDisconnect() {
-    localStorage.setItem("wallet_disconnected", "1");
-    localStorage.removeItem("walletName");
     try {
       const phantom = (window as any)?.phantom?.solana;
       if (phantom?.disconnect) await phantom.disconnect();
     } catch {}
     await disconnect();
-    window.location.reload();
+    localStorage.removeItem("walletName");
   }
 
   const currentPrice = pool ? pool.wsolAmount / pool.skyeAmount : 0;
@@ -74,17 +67,12 @@ export default function App() {
               )}
             </div>
           </div>
-          {connected && solBalance !== null && (
-              <span className="text-[12px] text-ink-tertiary tabular-nums hidden sm:inline">{solBalance.toFixed(3)} SOL</span>
-            )}
-            {connected ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-ink-faint hidden sm:inline font-mono">{publicKey?.toBase58().slice(0, 4)}...{publicKey?.toBase58().slice(-4)}</span>
-                <button onClick={handleDisconnect}
-                  className="px-3 py-1.5 text-[12px] font-semibold text-ink-tertiary bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
-                  Disconnect
-                </button>
-              </div>
+          {connected ? (
+              <WalletMenu
+                address={publicKey?.toBase58() ?? ""}
+                solBalance={solBalance}
+                onDisconnect={handleDisconnect}
+              />
             ) : (
               <WalletMultiButton />
             )}
@@ -151,6 +139,75 @@ export default function App() {
           CA: 5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF
         </p>
       </footer>
+    </div>
+  );
+}
+
+function WalletMenu({ address, solBalance, onDisconnect }: { address: string; solBalance: number | null; onDisconnect: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const short = address ? `${address.slice(0, 4)}...${address.slice(-4)}` : "";
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-colors">
+        <div className="w-2 h-2 rounded-full bg-emerald-400" />
+        <span className="text-[12px] font-mono text-ink-primary">{short}</span>
+        {solBalance !== null && (
+          <span className="text-[11px] text-ink-faint hidden sm:inline">{solBalance.toFixed(2)} SOL</span>
+        )}
+        <svg className={`w-3 h-3 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-52 bg-[rgba(15,15,25,0.98)] backdrop-blur-xl border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+          {/* Copy address */}
+          <button onClick={() => { navigator.clipboard.writeText(address); setOpen(false); }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left">
+            <svg className="w-4 h-4 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+            <span className="text-[13px] text-ink-primary">Copy Address</span>
+          </button>
+
+          {/* Change Wallet — greyed out for future */}
+          <div className="w-full flex items-center gap-3 px-4 py-3 opacity-30 cursor-not-allowed">
+            <svg className="w-4 h-4 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+            <div>
+              <span className="text-[13px] text-ink-primary block">Change Wallet</span>
+              <span className="text-[10px] text-ink-faint">Coming soon</span>
+            </div>
+          </div>
+
+          {/* skyefall.gg — greyed out for future */}
+          <div className="w-full flex items-center gap-3 px-4 py-3 opacity-30 cursor-not-allowed">
+            <svg className="w-4 h-4 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>
+            <div>
+              <span className="text-[13px] text-ink-primary block">skyefall.gg</span>
+              <span className="text-[10px] text-ink-faint">Coming soon</span>
+            </div>
+          </div>
+
+          <div className="border-t border-white/5" />
+
+          {/* Disconnect */}
+          <button onClick={() => { onDisconnect(); setOpen(false); }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-rose-500/10 transition-colors text-left">
+            <svg className="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+            <span className="text-[13px] text-rose-400">Disconnect</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
