@@ -45,8 +45,21 @@ async function getJupiterTokens(): Promise<Map<string, JupiterToken>> {
 
   jupiterFetching = true;
   try {
-    const res = await fetch("https://tokens.jup.ag/tokens?tags=verified");
-    const tokens: JupiterToken[] = await res.json();
+    // Try multiple endpoints — Jupiter moves these around
+    let tokens: JupiterToken[] = [];
+    for (const url of [
+      "https://tokens.jup.ag/tokens?tags=verified",
+      "https://lite-api.jup.ag/tokens/v1/strict",
+      "https://token.jup.ag/strict",
+    ]) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          tokens = await res.json();
+          if (tokens.length > 0) break;
+        }
+      } catch {}
+    }
     jupiterCache = new Map(tokens.map(t => [t.address, t]));
   } catch {
     jupiterCache = new Map();
