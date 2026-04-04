@@ -1,6 +1,6 @@
 import { VersionedTransaction, Connection } from "@solana/web3.js";
 
-const JUPITER_API = "https://quote-api.jup.ag/v6";
+const JUPITER_API = "https://api.jup.ag/swap/v1";
 
 export interface JupiterQuote {
   inputMint: string;

@@ -45,7 +45,7 @@ async function getJupiterTokens(): Promise<Map<string, JupiterToken>> {
 
   jupiterFetching = true;
   try {
-    const res = await fetch("https://token.jup.ag/all");
+    const res = await fetch("https://tokens.jup.ag/tokens?tags=verified");
     const tokens: JupiterToken[] = await res.json();
     jupiterCache = new Map(tokens.map(t => [t.address, t]));
   } catch {
@@ -146,37 +146,12 @@ export function useBalances() {
       parseAccounts(t22Accounts.value as any, true);
     } catch {}
 
-    // Fetch USD prices from Jupiter for all mints
-    try {
-      const mints = tokens.map(t => t.mint);
-      if (mints.length > 0) {
-        // Jupiter price API accepts up to 100 mints
-        const chunks = [];
-        for (let i = 0; i < mints.length; i += 100) {
-          chunks.push(mints.slice(i, i + 100));
-        }
-        for (const chunk of chunks) {
-          const ids = chunk.join(",");
-          const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${ids}`);
-          const priceData = await priceRes.json();
-          if (priceData?.data) {
-            for (const token of tokens) {
-              const p = priceData.data[token.mint];
-              if (p?.price) {
-                const uiVal = token.balance / 10 ** token.decimals;
-                token.usdValue = uiVal * parseFloat(p.price);
-              }
-            }
-          }
-        }
-      }
-    } catch {}
-
-    // Sort: by USD value descending (unknown value last)
+    // Sort: tokens with logos first, then by raw balance descending
     tokens.sort((a, b) => {
-      const aVal = a.usdValue ?? -1;
-      const bVal = b.usdValue ?? -1;
-      return bVal - aVal;
+      const aHasLogo = a.logo ? 1 : 0;
+      const bHasLogo = b.logo ? 1 : 0;
+      if (aHasLogo !== bHasLogo) return bHasLogo - aHasLogo;
+      return b.balance - a.balance;
     });
 
     setAllTokens(tokens);

@@ -473,10 +473,10 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
   }, [onClose]);
 
   const solUsdVal = (solBalance ?? 0) * solUsd;
-  const dustCount = allTokens.filter(t => (t.usdValue ?? 0) < 10).length;
+  const dustCount = allTokens.filter(t => !t.logo).length;
 
   const filtered = allTokens
-    .filter(t => showDust || (t.usdValue ?? 0) >= 10)
+    .filter(t => showDust || !!t.logo)
     .filter(t => {
       if (!search) return true;
       const q = search.toLowerCase();
@@ -551,9 +551,6 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
               </div>
               <div className="text-right tabular-nums">
                 <div className="text-[13px] font-semibold text-ink-primary">{token.uiAmount}</div>
-                {token.usdValue !== undefined && token.usdValue > 0 && (
-                  <div className="text-[11px] text-ink-faint">${token.usdValue.toFixed(2)}</div>
-                )}
               </div>
             </button>
           );
@@ -572,7 +569,7 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
             <div className={`w-3.5 h-3.5 rounded border transition-colors flex items-center justify-center ${showDust ? "bg-skye-500 border-skye-500" : "border-white/20"}`}>
               {showDust && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
             </div>
-            Show dust ({dustCount} tokens &lt;$10)
+            Show dust ({dustCount} unknown tokens)
           </button>
         </div>
       )}
