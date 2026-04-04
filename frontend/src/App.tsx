@@ -36,13 +36,19 @@ export default function App() {
   const { connected, disconnect, publicKey } = useWallet();
   const [tab, setTab] = useState<Tab>("trade");
 
+  // Clear disconnect flag when wallet connects so autoConnect works next visit
+  useEffect(() => {
+    if (connected) localStorage.removeItem("wallet_disconnected");
+  }, [connected]);
+
   async function handleDisconnect() {
+    localStorage.setItem("wallet_disconnected", "1");
+    localStorage.removeItem("walletName");
     try {
       const phantom = (window as any)?.phantom?.solana;
       if (phantom?.disconnect) await phantom.disconnect();
     } catch {}
     await disconnect();
-    localStorage.removeItem("walletName");
     window.location.reload();
   }
 

@@ -12,14 +12,15 @@ import App from "./App";
 import { RPC_URL } from "./constants";
 import "./index.css";
 
-// Empty array = wallet-standard auto-detects installed wallets (Phantom, Solflare, etc.)
-// This is the modern approach used by Jupiter — gives proper disconnect/reconnect with approval prompts
 const wallets: any[] = [];
+
+// Only autoConnect if user didn't explicitly disconnect
+const shouldAutoConnect = !localStorage.getItem("wallet_disconnected");
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ConnectionProvider endpoint={RPC_URL}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={shouldAutoConnect}>
         <WalletModalProvider>
           <App />
         </WalletModalProvider>
