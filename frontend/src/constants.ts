@@ -1,7 +1,8 @@
 import { PublicKey } from "@solana/web3.js";
 import { NATIVE_MINT } from "@solana/spl-token";
 
-export const RPC_URL = "https://solana-rpc.publicnode.com";
+export const RPC_URL =
+  import.meta.env.VITE_RPC_URL || "https://solana-rpc.publicnode.com";
 
 export const SKYE_LADDER_PROGRAM_ID = new PublicKey(
   "4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz"

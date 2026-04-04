@@ -66,7 +66,10 @@ pub fn handler<'info>(
         };
 
         // Update reserves — full amount_in minus team and vault shares enter pool
-        let pool_receives = amount_in - team_fee - diamond_fee - strong_fee;
+        let pool_receives = amount_in
+            .checked_sub(team_fee).ok_or(SkyeAmmError::MathOverflow)?
+            .checked_sub(diamond_fee).ok_or(SkyeAmmError::MathOverflow)?
+            .checked_sub(strong_fee).ok_or(SkyeAmmError::MathOverflow)?;
         let pool = &mut ctx.accounts.pool;
         pool.wsol_amount = pool.wsol_amount.checked_add(pool_receives)
             .ok_or(SkyeAmmError::MathOverflow)?;
@@ -183,7 +186,10 @@ pub fn handler<'info>(
             (0u64, 0u64, 0u64, 0u64)
         };
 
-        let user_receives = wsol_out - team_fee - diamond_fee - strong_fee;
+        let user_receives = wsol_out
+            .checked_sub(team_fee).ok_or(SkyeAmmError::MathOverflow)?
+            .checked_sub(diamond_fee).ok_or(SkyeAmmError::MathOverflow)?
+            .checked_sub(strong_fee).ok_or(SkyeAmmError::MathOverflow)?;
 
         // Update reserves
         let pool = &mut ctx.accounts.pool;

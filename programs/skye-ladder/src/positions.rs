@@ -324,9 +324,9 @@ fn consolidate_fully_unlocked(positions: &mut Vec<Position>, current_price: u64)
     let mut total_original = positions[first].original_balance.max(positions[first].token_balance) as u128;
 
     for &idx in fully_unlocked.iter().skip(1) {
-        total_sol += positions[idx].initial_sol as u128;
-        total_tokens += positions[idx].token_balance as u128;
-        total_original += positions[idx].original_balance.max(positions[idx].token_balance) as u128;
+        total_sol = total_sol.saturating_add(positions[idx].initial_sol as u128);
+        total_tokens = total_tokens.saturating_add(positions[idx].token_balance as u128);
+        total_original = total_original.saturating_add(positions[idx].original_balance.max(positions[idx].token_balance) as u128);
     }
 
     // Use current_price as entry for the consolidated position (it's fully unlocked anyway)

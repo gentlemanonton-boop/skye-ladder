@@ -54,8 +54,8 @@ pub fn handler(ctx: Context<SetFeeConfig>, team_wallet: Pubkey, diamond_vault: P
 pub struct SetFeeConfig<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    /// CHECK: Validated manually via authority check
-    #[account(mut)]
+    /// CHECK: Validated manually via authority check + owner verification
+    #[account(mut, owner = crate::ID)]
     pub pool: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }

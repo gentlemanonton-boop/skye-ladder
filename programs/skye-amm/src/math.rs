@@ -91,10 +91,11 @@ pub fn compute_withdraw(
 /// Split fee: 50% team, 25% pool, 17.5% diamond, 7.5% strong.
 /// Returns (team, pool, diamond, strong). Remainder goes to pool.
 pub fn split_fee(fee: u64) -> (u64, u64, u64, u64) {
-    let team = fee / 2;                            // 50%
-    let diamond = fee * 175 / 1000;                // 17.5%
-    let strong = fee * 75 / 1000;                  // 7.5%
-    let pool = fee - team - diamond - strong;      // 25% + remainder
+    let fee128 = fee as u128;
+    let team = (fee128 / 2) as u64;                           // 50%
+    let diamond = (fee128 * 175 / 1000) as u64;               // 17.5%
+    let strong = (fee128 * 75 / 1000) as u64;                 // 7.5%
+    let pool = fee - team - diamond - strong;                  // 25% + remainder
     (team, pool, diamond, strong)
 }
 

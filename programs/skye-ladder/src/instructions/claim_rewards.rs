@@ -6,6 +6,9 @@ use anchor_spl::token_interface::{self, TokenAccount as InterfaceTokenAccount, T
 use crate::errors::SkyeLadderError;
 use crate::state::{Config, WalletRecord, PRICE_SCALE};
 
+/// Skye AMM program ID — used to verify pool account ownership
+const SKYE_AMM_ID: Pubkey = pubkey!("GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX");
+
 /// Claim rewards for a position that has reached 15x.
 ///
 /// Qualification:
@@ -82,7 +85,20 @@ pub fn handler<'info>(
     if reward > 0 {
         // Transfer WSOL from vault to claimer
         // The vault authority must sign — passed as remaining_accounts[0]
+        require!(
+            !ctx.remaining_accounts.is_empty(),
+            SkyeLadderError::InvalidPool
+        );
         let vault_authority = &ctx.remaining_accounts[0];
+        require!(
+            vault_authority.is_signer,
+            SkyeLadderError::Unauthorized
+        );
+        // Verify the vault authority owns the vault token account
+        require!(
+            ctx.accounts.vault_token_account.owner == vault_authority.key(),
+            SkyeLadderError::Unauthorized
+        );
 
         token_interface::transfer_checked(
             CpiContext::new(
@@ -146,8 +162,11 @@ pub struct ClaimRewards<'info> {
     pub wallet_record: Account<'info, WalletRecord>,
 
     /// The AMM Pool account (for reading price)
-    /// CHECK: Validated against config.lb_pair
-    #[account(constraint = pool_account.key() == config.lb_pair @ SkyeLadderError::InvalidPool)]
+    /// CHECK: Validated against config.lb_pair and AMM program ownership
+    #[account(
+        constraint = pool_account.key() == config.lb_pair @ SkyeLadderError::InvalidPool,
+        owner = SKYE_AMM_ID,
+    )]
     pub pool_account: AccountInfo<'info>,
 
     /// Vault token account (diamond or strong) to claim from

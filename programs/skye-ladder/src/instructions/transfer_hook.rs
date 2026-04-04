@@ -81,9 +81,15 @@ fn read_spot_price(accounts: &TransferHook) -> Result<u64> {
     let config = &accounts.config;
     let lb_pair_info = &accounts.lb_pair;
 
-    // Verify the pool account matches what's in Config
+    // Verify the pool account matches what's in Config and is owned by the AMM program
     require!(
         lb_pair_info.key() == config.lb_pair,
+        SkyeLadderError::InvalidPool
+    );
+    // AMM program must own the pool account to prevent spoofed price data
+    let amm_program_id = pubkey!("GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX");
+    require!(
+        *lb_pair_info.owner == amm_program_id,
         SkyeLadderError::InvalidPool
     );
 
