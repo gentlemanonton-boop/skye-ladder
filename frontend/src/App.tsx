@@ -37,16 +37,13 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("trade");
 
   async function handleDisconnect() {
-    // 1. Disconnect via adapter
-    await disconnect();
-    // 2. Directly disconnect from Phantom to revoke trusted app status
-    // This forces the approval popup on next connect (lets user pick account)
     try {
       const phantom = (window as any)?.phantom?.solana;
       if (phantom?.disconnect) await phantom.disconnect();
     } catch {}
-    // 3. Clear stored wallet name so autoConnect doesn't reconnect
+    await disconnect();
     localStorage.removeItem("walletName");
+    window.location.reload();
   }
 
   const currentPrice = pool ? pool.wsolAmount / pool.skyeAmount : 0;
