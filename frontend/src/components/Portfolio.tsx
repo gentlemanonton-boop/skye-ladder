@@ -164,8 +164,7 @@ function TokenRow({ token }: { token: TokenBalance }) {
         )}
         <div>
           <div className="text-[13px] font-semibold text-ink-primary">{token.symbol}</div>
-          {token.isToken2022 && <div className="text-[10px] text-ink-faint">Token-2022</div>}
-          {token.isNative && <div className="text-[10px] text-ink-faint">Wrapped SOL</div>}
+          <div className="text-[10px] text-ink-faint">{token.name}</div>
         </div>
       </div>
       <div className="text-right tabular-nums">
