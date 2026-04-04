@@ -27,9 +27,13 @@ export async function getJupiterQuote(
       slippageBps: slippageBps.toString(),
     });
     const res = await fetch(`${JUPITER_API}/quote?${params}`);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error("Jupiter quote failed:", res.status, await res.text());
+      return null;
+    }
     return await res.json();
-  } catch {
+  } catch (e) {
+    console.error("Jupiter quote error:", e);
     return null;
   }
 }
@@ -38,7 +42,7 @@ export async function executeJupiterSwap(
   quote: JupiterQuote,
   userPublicKey: string,
   connection: Connection,
-  sendTransaction: (tx: VersionedTransaction, conn: Connection) => Promise<string>
+  signTransaction: (tx: VersionedTransaction) => Promise<VersionedTransaction>
 ): Promise<string> {
   // Get swap transaction from Jupiter
   const res = await fetch(`${JUPITER_API}/swap`, {
@@ -62,7 +66,16 @@ export async function executeJupiterSwap(
   const txBuf = Buffer.from(swapTransaction, "base64");
   const vtx = VersionedTransaction.deserialize(txBuf);
 
-  const sig = await sendTransaction(vtx, connection);
+  // Sign with wallet
+  const signed = await signTransaction(vtx);
+
+  // Send raw signed transaction
+  const sig = await connection.sendRawTransaction(signed.serialize(), {
+    skipPreflight: false,
+    maxRetries: 2,
+  });
+
+  // Confirm
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
   await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
   return sig;

@@ -54,7 +54,7 @@ interface Props {
 
 export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, skyeBalance }: Props) {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction, signTransaction } = useWallet();
   const { swap, pending: curvePending, lastTx: curveLastTx, error: curveError } = useSwap();
   const { allTokens } = useBalances();
 
@@ -201,7 +201,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
   }
 
   async function handleSubmit() {
-    if (!publicKey || !sendTransaction || amountNum <= 0) return;
+    if (!publicKey || !sendTransaction || !signTransaction || amountNum <= 0) return;
     setJupError(null);
     setLastTx(null);
 
@@ -218,7 +218,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         const rawIn = Math.floor(amountNum * 10 ** payToken.decimals);
         const jupQ = await getJupiterQuote(payToken.mint, NATIVE_MINT.toBase58(), rawIn);
         if (!jupQ) throw new Error("Failed to get Jupiter quote");
-        const sig1 = await executeJupiterSwap(jupQ, publicKey.toBase58(), connection, sendTransaction);
+        const sig1 = await executeJupiterSwap(jupQ, publicKey.toBase58(), connection, signTransaction!);
         setLastTx(sig1);
 
         // Step 2: Curve buy (SOL → SKYE)
@@ -234,10 +234,10 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         // Step 2: Jupiter swap (SOL → X)
         const jupQ = await getJupiterQuote(NATIVE_MINT.toBase58(), receiveToken.mint, Math.floor(solOut));
         if (!jupQ) throw new Error("Failed to get Jupiter quote");
-        await executeJupiterSwap(jupQ, publicKey.toBase58(), connection, sendTransaction);
+        await executeJupiterSwap(jupQ, publicKey.toBase58(), connection, signTransaction!);
       } else if (route === "jupiter" && jupQuote) {
         setJupPending(true);
-        const sig = await executeJupiterSwap(jupQuote, publicKey.toBase58(), connection, sendTransaction);
+        const sig = await executeJupiterSwap(jupQuote, publicKey.toBase58(), connection, signTransaction!);
         setLastTx(sig);
       }
       setAmount("");
