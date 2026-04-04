@@ -7,23 +7,23 @@ const TIERS = [
   { phase: 1, title: "Get Your Money Back", range: "1x \u2013 2x",
     unlock: "~100% at entry \u2192 50% at 2x", growth: "Natural taper as price rises",
     example: "Buy at $100 \u2192 at 1.5x ($150), sell $100 worth (66.7% of tokens)",
-    accent: "bg-sky-50 border-sky-200", dot: "bg-sky-400", badge: "bg-sky-500", ring: "ring-sky-300" },
+    accent: "bg-sky-500/10 border-sky-500/20", dot: "bg-sky-400", badge: "bg-sky-500", ring: "ring-sky-500/30" },
   { phase: 2, title: "Compressed Growth", range: "2x \u2013 5x",
     unlock: "50% at 2x \u2192 62.5% at 5x", growth: "Half rate between milestones, cliff jump at 5x",
     example: "At 3.5x: 53.1% unlocked (not 56.25% \u2014 compressed by half)",
-    accent: "bg-cyan-50 border-cyan-200", dot: "bg-cyan-400", badge: "bg-cyan-500", ring: "ring-cyan-300" },
+    accent: "bg-cyan-500/10 border-cyan-500/20", dot: "bg-cyan-400", badge: "bg-cyan-500", ring: "ring-cyan-500/30" },
   { phase: 3, title: "Compressed Growth", range: "5x \u2013 10x",
     unlock: "62.5% at 5x \u2192 75% at 10x", growth: "Half rate between milestones, cliff jump at 10x",
     example: "At 7.5x: 65.6% unlocked, then jumps to 75% at exactly 10x",
-    accent: "bg-blue-50 border-blue-200", dot: "bg-blue-400", badge: "bg-blue-500", ring: "ring-blue-300" },
+    accent: "bg-blue-500/10 border-blue-500/20", dot: "bg-blue-400", badge: "bg-blue-500", ring: "ring-blue-500/30" },
   { phase: 4, title: "Final Stretch", range: "10x \u2013 15x",
     unlock: "75% at 10x \u2192 100% at 15x", growth: "Half rate, then full unlock at 15x milestone",
     example: "At 12.5x: 81.25% unlocked, at 15x: 100% \u2014 all restrictions removed",
-    accent: "bg-indigo-50 border-indigo-200", dot: "bg-indigo-400", badge: "bg-indigo-500", ring: "ring-indigo-300" },
+    accent: "bg-indigo-500/10 border-indigo-500/20", dot: "bg-indigo-400", badge: "bg-indigo-500", ring: "ring-indigo-500/30" },
   { phase: 5, title: "Fully Unlocked", range: "15x+",
     unlock: "100% unlocked", growth: "No restrictions",
     example: "Sell any amount at any time. You earned it.",
-    accent: "bg-emerald-50 border-emerald-200", dot: "bg-emerald-400", badge: "bg-emerald-500", ring: "ring-emerald-300" },
+    accent: "bg-emerald-500/10 border-emerald-500/20", dot: "bg-emerald-400", badge: "bg-emerald-500", ring: "ring-emerald-500/30" },
 ];
 
 function getActive(mult: number): number {
@@ -44,8 +44,8 @@ export function TierBreakdown({ positions, currentPrice }: Props) {
   const activePhase = primary ? getActive(primary.multiplier) : 0;
 
   return (
-    <div className="bg-surface-card rounded-2xl shadow-card border border-gray-200/80 p-6">
-      <h2 className="text-[15px] font-bold text-ink-primary mb-4">The Skye Ladder</h2>
+    <div className="glass p-6">
+      <h2 className="text-[15px] font-bold text-ink-primary mb-4">The Skye</h2>
       <div className="space-y-2">
         {TIERS.map((tier) => {
           const isActive = tier.phase === activePhase;
@@ -57,15 +57,15 @@ export function TierBreakdown({ positions, currentPrice }: Props) {
               key={tier.phase}
               onClick={() => setExpanded(isOpen ? null : tier.phase)}
               className={`rounded-xl border px-4 py-3 cursor-pointer transition-all duration-200 ${
-                isActive ? `${tier.accent} ${tier.ring} ring-1 shadow-sm` : isPast ? "bg-gray-50/60 border-gray-100" : "bg-white border-gray-100 hover:border-gray-200"
+                isActive ? `${tier.accent} ${tier.ring} ring-1 shadow-sm` : isPast ? "bg-white/3 border-white/5" : "bg-white/3 border-white/5 hover:border-white/10"
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive || isPast ? tier.dot : "bg-gray-200"} ${isActive ? "animate-pulse" : ""}`} />
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive || isPast ? tier.dot : "bg-white/10"} ${isActive ? "animate-pulse" : ""}`} />
                 <span className={`text-[13px] font-bold ${isActive ? "text-ink-primary" : isPast ? "text-ink-secondary" : "text-ink-faint"}`}>
                   Phase {tier.phase}
                 </span>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${isActive ? "bg-white/70 text-ink-primary" : isPast ? "text-ink-tertiary" : "text-ink-faint"}`}>
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${isActive ? "bg-white/10 text-ink-primary" : isPast ? "text-ink-tertiary" : "text-ink-faint"}`}>
                   {tier.range}
                 </span>
                 {isActive && (
@@ -81,7 +81,7 @@ export function TierBreakdown({ positions, currentPrice }: Props) {
                   <p className="font-semibold">{tier.title}</p>
                   <p>{tier.unlock}</p>
                   <p className="opacity-70">{tier.growth}</p>
-                  <p className="mt-1.5 text-[11px] bg-white/50 rounded-lg px-2.5 py-1.5 border border-gray-100 italic">{tier.example}</p>
+                  <p className="mt-1.5 text-[11px] bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/5 italic">{tier.example}</p>
                 </div>
               </div>
             </div>
@@ -89,7 +89,7 @@ export function TierBreakdown({ positions, currentPrice }: Props) {
         })}
       </div>
 
-      <p className="text-[12px] text-ink-tertiary text-center mt-4 pt-3 border-t border-gray-100">
+      <p className="text-[12px] text-ink-tertiary text-center mt-4 pt-3 border-t border-white/5">
         At or below entry price = always 100% sellable. <span className="font-medium text-ink-secondary">No one is ever trapped.</span>
       </p>
     </div>

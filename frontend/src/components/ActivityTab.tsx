@@ -16,18 +16,18 @@ export function ActivityTab() {
 
   if (!publicKey) {
     return (
-      <div className="bg-surface-card rounded-2xl shadow-card border border-gray-200/80 p-8 text-center">
+      <div className="glass p-8 text-center">
         <p className="text-ink-tertiary text-[14px]">Connect wallet to see activity</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-surface-card rounded-2xl shadow-card border border-gray-200/80 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100">
+    <div className="glass overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/5">
         <h2 className="text-[16px] font-bold text-ink-primary">Transaction History</h2>
       </div>
-      <div className="divide-y divide-gray-50">
+      <div className="divide-y divide-white/5">
         {loading && trades.length === 0 && (
           <p className="text-[14px] text-ink-tertiary text-center py-12">Loading trades...</p>
         )}
@@ -36,7 +36,7 @@ export function ActivityTab() {
         )}
         {trades.map((t) => (
           <a key={t.signature} href={`https://solscan.io/tx/${t.signature}`} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+            className="flex items-center gap-3 px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors">
             <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0 ${t.type === "buy" ? "bg-skye-500" : "bg-rose-400"}`}>
               {t.type === "buy" ? "B" : "S"}
             </div>

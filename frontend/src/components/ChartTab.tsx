@@ -54,7 +54,7 @@ export function ChartTab() {
         crosshair: { vertLine: { color: "#374151", labelBackgroundColor: "#374151" }, horzLine: { color: "#374151", labelBackgroundColor: "#374151" } },
       });
       const series = chart.addSeries(lc.AreaSeries, {
-        lineColor: "#0ea5e9", topColor: "rgba(14,165,233,0.2)", bottomColor: "rgba(14,165,233,0.01)",
+        lineColor: "#22c55e", topColor: "rgba(34,197,94,0.2)", bottomColor: "rgba(34,197,94,0.01)",
         lineWidth: 2, priceFormat: { type: "price", precision: 12, minMove: 0.000000000001 },
       });
       chartRef.current = chart;
