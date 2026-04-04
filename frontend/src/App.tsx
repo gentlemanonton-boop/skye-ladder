@@ -14,6 +14,7 @@ import { AboutTab } from "./components/AboutTab";
 import { TradeFlash } from "./components/TradeFlash";
 import { LaunchTab } from "./components/LaunchTab";
 import { DiscoverTab } from "./components/DiscoverTab";
+import { Portfolio } from "./components/Portfolio";
 
 const LOGO = "https://gateway.irys.xyz/YkvolVl__ug43pWw3H-cYF2vLN_zE_1LRt6FjcYmkcc";
 type Tab = "trade" | "chart" | "launch" | "discover" | "about";
@@ -101,6 +102,7 @@ export default function App() {
             {tab === "trade" && (
               <>
                 <SwapPanel currentPrice={currentPrice} solUsd={solUsd} />
+                <Portfolio currentPrice={currentPrice} solUsd={solUsd} />
                 <UnlockProgress positions={positions} currentPrice={currentPrice} />
                 <TierBreakdown positions={positions} currentPrice={currentPrice} />
               </>

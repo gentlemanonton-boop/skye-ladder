@@ -167,14 +167,12 @@ fn load_wallet_record_mut(account: &AccountInfo) -> Result<WalletRecord> {
             // Total supply is 1B tokens = 10^18 raw. Any position with
             // token_balance > 10^18 is impossible and means garbled data.
             let max_raw: u64 = 1_000_000_000_000_000_000;
-            // Max realistic entry_price: 1 SOL/token = 1e18 in PRICE_SCALE.
-            // Anything above this is from a corrupt merge.
-            let max_entry_price: u64 = PRICE_SCALE as u64; // 1 SOL per token
+            // Note: corrupt entry_price is handled by sanitize_corrupt_entry_prices()
+            // in the handler, not here. We only filter truly garbled data here.
             let corrupt = record.positions.iter().any(|p| {
                 p.token_balance > max_raw
                 || p.original_balance > max_raw
                 || p.entry_price == 0
-                || p.entry_price > max_entry_price
                 // Detect stale positions: original vastly exceeds balance (>100x)
                 // means the original_balance tracking drifted from reality
                 || (p.original_balance > 0 && p.token_balance > 0
@@ -187,7 +185,6 @@ fn load_wallet_record_mut(account: &AccountInfo) -> Result<WalletRecord> {
                         p.token_balance <= max_raw
                         && p.original_balance <= max_raw
                         && p.entry_price > 0
-                        && p.entry_price <= max_entry_price
                         && (p.original_balance == 0
                             || p.original_balance / p.token_balance.max(1) <= 100)
                     })

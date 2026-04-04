@@ -36,6 +36,7 @@ function getActive(mult: number): number {
 }
 
 export function TierBreakdown({ positions, currentPrice }: Props) {
+  const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const enriched = positions.map((p) => enrichPosition(p, currentPrice));
   const primary = enriched.length > 0
@@ -44,54 +45,65 @@ export function TierBreakdown({ positions, currentPrice }: Props) {
   const activePhase = primary ? getActive(primary.multiplier) : 0;
 
   return (
-    <div className="glass p-6">
-      <h2 className="text-[15px] font-bold text-ink-primary mb-4">The Skye</h2>
-      <div className="space-y-2">
-        {TIERS.map((tier) => {
-          const isActive = tier.phase === activePhase;
-          const isPast = activePhase > tier.phase;
-          const isOpen = expanded === tier.phase;
+    <div className="glass overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full p-4 sm:p-5 flex items-center justify-between"
+      >
+        <h2 className="text-[14px] sm:text-[15px] font-bold text-ink-primary">The Skye Ladder</h2>
+        <svg className={`w-4 h-4 text-ink-faint transition-transform duration-200 ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
 
-          return (
-            <div
-              key={tier.phase}
-              onClick={() => setExpanded(isOpen ? null : tier.phase)}
-              className={`rounded-xl border px-4 py-3 cursor-pointer transition-all duration-200 ${
-                isActive ? `${tier.accent} ${tier.ring} ring-1 shadow-sm` : isPast ? "bg-white/3 border-white/5" : "bg-white/3 border-white/5 hover:border-white/10"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive || isPast ? tier.dot : "bg-white/10"} ${isActive ? "animate-pulse" : ""}`} />
-                <span className={`text-[13px] font-bold ${isActive ? "text-ink-primary" : isPast ? "text-ink-secondary" : "text-ink-faint"}`}>
-                  Phase {tier.phase}
-                </span>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${isActive ? "bg-white/10 text-ink-primary" : isPast ? "text-ink-tertiary" : "text-ink-faint"}`}>
-                  {tier.range}
-                </span>
-                {isActive && (
-                  <span className={`ml-auto text-[10px] font-bold text-white px-2 py-0.5 rounded-md ${tier.badge}`}>CURRENT</span>
-                )}
-                <svg className={`w-3.5 h-3.5 ml-auto text-ink-faint transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
+      <div className={`transition-all duration-300 ease-out overflow-hidden ${open ? "max-h-[800px]" : "max-h-0"}`}>
+        <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-2">
+          {TIERS.map((tier) => {
+            const isActive = tier.phase === activePhase;
+            const isPast = activePhase > tier.phase;
+            const isOpen = expanded === tier.phase;
 
-              <div className={`overflow-hidden transition-all duration-200 ${isOpen ? "max-h-40 mt-2.5 opacity-100" : "max-h-0 opacity-0"}`}>
-                <div className={`ml-[18px] text-[12px] space-y-1 ${isActive ? "text-ink-primary/80" : "text-ink-tertiary"}`}>
-                  <p className="font-semibold">{tier.title}</p>
-                  <p>{tier.unlock}</p>
-                  <p className="opacity-70">{tier.growth}</p>
-                  <p className="mt-1.5 text-[11px] bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/5 italic">{tier.example}</p>
+            return (
+              <div
+                key={tier.phase}
+                onClick={() => setExpanded(isOpen ? null : tier.phase)}
+                className={`rounded-xl border px-4 py-3 cursor-pointer transition-all duration-200 ${
+                  isActive ? `${tier.accent} ${tier.ring} ring-1 shadow-sm` : isPast ? "bg-white/3 border-white/5" : "bg-white/3 border-white/5 hover:border-white/10"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive || isPast ? tier.dot : "bg-white/10"} ${isActive ? "animate-pulse" : ""}`} />
+                  <span className={`text-[13px] font-bold ${isActive ? "text-ink-primary" : isPast ? "text-ink-secondary" : "text-ink-faint"}`}>
+                    Phase {tier.phase}
+                  </span>
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${isActive ? "bg-white/10 text-ink-primary" : isPast ? "text-ink-tertiary" : "text-ink-faint"}`}>
+                    {tier.range}
+                  </span>
+                  {isActive && (
+                    <span className={`ml-auto text-[10px] font-bold text-white px-2 py-0.5 rounded-md ${tier.badge}`}>CURRENT</span>
+                  )}
+                  <svg className={`w-3.5 h-3.5 ml-auto text-ink-faint transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+
+                <div className={`overflow-hidden transition-all duration-200 ${isOpen ? "max-h-40 mt-2.5 opacity-100" : "max-h-0 opacity-0"}`}>
+                  <div className={`ml-[18px] text-[12px] space-y-1 ${isActive ? "text-ink-primary/80" : "text-ink-tertiary"}`}>
+                    <p className="font-semibold">{tier.title}</p>
+                    <p>{tier.unlock}</p>
+                    <p className="opacity-70">{tier.growth}</p>
+                    <p className="mt-1.5 text-[11px] bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/5 italic">{tier.example}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
 
-      <p className="text-[12px] text-ink-tertiary text-center mt-4 pt-3 border-t border-white/5">
-        At or below entry price = always 100% sellable. <span className="font-medium text-ink-secondary">No one is ever trapped.</span>
-      </p>
+          <p className="text-[12px] text-ink-tertiary text-center mt-4 pt-3 border-t border-white/5">
+            At or below entry price = always 100% sellable. <span className="font-medium text-ink-secondary">No one is ever trapped.</span>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
