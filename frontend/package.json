@@ -14,7 +14,7 @@
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",
-    "@solana/wallet-adapter-wallets": "^0.19.32",
+    "@solana/wallet-adapter-phantom": "^0.9.24",
     "@solana/web3.js": "^1.95.0",
     "buffer": "^6.0.3",
     "lightweight-charts": "^5.1.0",

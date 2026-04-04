@@ -11,11 +11,7 @@ import ladderIdl from "../idl/skye_ladder.json";
 import { getStoredTokens, type LaunchedTokenInfo } from "../lib/launchStore";
 import { formatUsd } from "../lib/format";
 import { useSolPrice } from "../hooks/useSolPrice";
-
-const SKYE_CURVE_ID = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
-const SKYE_LADDER_ID = new PublicKey("4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz");
-const SWAP_DISC = new Uint8Array([248,198,158,145,225,117,135,200]);
-const DECIMALS = 9;
+import { SKYE_CURVE_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS } from "../constants";
 const GRADUATION_SOL = 85;
 
 // Exclude old test tokens that are no longer active
@@ -60,14 +56,11 @@ export function DiscoverTab() {
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [tokenBalances, setTokenBalances] = useState<Record<string, number>>({});
 
-  // Fetch SOL balance
+  // Use shared balance hook via wallet context instead of independent polling
+  // SOL balance is passed from parent or fetched once
   useEffect(() => {
     if (!publicKey) { setSolBalance(null); return; }
     connection.getBalance(publicKey).then(b => setSolBalance(b / LAMPORTS_PER_SOL)).catch(() => {});
-    const id = setInterval(() => {
-      connection.getBalance(publicKey).then(b => setSolBalance(b / LAMPORTS_PER_SOL)).catch(() => {});
-    }, 10000);
-    return () => clearInterval(id);
   }, [connection, publicKey]);
 
   // Fetch token balance for a specific mint
@@ -90,43 +83,51 @@ export function DiscoverTab() {
       try {
         const stored = getStoredTokens();
         const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: 50 });
+
+        // Batch fetch transactions instead of sequential
+        const txResults = await Promise.allSettled(
+          sigs.map(s => connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 }))
+        );
+
         const onChainMints: string[] = [];
-        for (const s of sigs) {
+        for (const result of txResults) {
           if (cancelled) break;
-          try {
-            const tx = await connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 });
-            const logs = tx?.meta?.logMessages || [];
-            const l = logs.find(l => l.includes("Token launched:"));
-            if (!l) continue;
-            const m = l.match(/mint=([A-Za-z0-9]+)/);
-            if (m && !EXCLUDED_MINTS.has(m[1])) onChainMints.push(m[1]);
-          } catch {}
+          if (result.status !== "fulfilled" || !result.value?.meta?.logMessages) continue;
+          const logs = result.value.meta.logMessages;
+          const l = logs.find(l => l.includes("Token launched:"));
+          if (!l) continue;
+          const m = l.match(/mint=([A-Za-z0-9]+)/);
+          if (m && !EXCLUDED_MINTS.has(m[1])) onChainMints.push(m[1]);
         }
 
-        const results: DiscoveredToken[] = [];
         const allMints = [...new Set([...stored.map(s => s.mint), ...onChainMints])].filter(m => !EXCLUDED_MINTS.has(m));
 
-        for (const mintStr of allMints) {
-          const info = stored.find(s => s.mint === mintStr);
+        // Batch fetch all curve PDAs at once using getMultipleAccountsInfo
+        const curvePDAs = allMints.map(mintStr => {
           const mint = new PublicKey(mintStr);
-          const [curvePDA] = PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], SKYE_CURVE_ID);
+          return PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], SKYE_CURVE_ID)[0];
+        });
+        const curveAccounts = await connection.getMultipleAccountsInfo(curvePDAs);
+
+        const results: DiscoveredToken[] = [];
+        for (let i = 0; i < allMints.length; i++) {
+          const mintStr = allMints[i];
+          const info = stored.find(s => s.mint === mintStr);
+          const acct = curveAccounts[i];
           let realSol = 0, virtualSol = 0, virtualToken = 0, graduated = false;
-          try {
-            const acct = await connection.getAccountInfo(curvePDA);
-            if (acct && acct.data.length >= 210) {
-              virtualToken = Number(acct.data.readBigUInt64LE(168));
-              virtualSol = Number(acct.data.readBigUInt64LE(176));
-              realSol = Number(acct.data.readBigUInt64LE(184));
-              graduated = acct.data[210] === 1;
-            }
-          } catch {}
+          if (acct && acct.data.length >= 210) {
+            virtualToken = Number(acct.data.readBigUInt64LE(168));
+            virtualSol = Number(acct.data.readBigUInt64LE(176));
+            realSol = Number(acct.data.readBigUInt64LE(184));
+            graduated = acct.data[210] === 1;
+          }
 
           results.push({
             mint: mintStr, name: info?.name || mintStr.slice(0, 6) + "...", symbol: info?.symbol || "???",
             image: info?.image || "", description: info?.description || "",
             website: info?.website || "", twitter: info?.twitter || "",
             telegram: info?.telegram || "", discord: info?.discord || "",
-            curve: curvePDA.toBase58(), creator: info?.creator || "",
+            curve: curvePDAs[i].toBase58(), creator: info?.creator || "",
             launchedAt: info?.launchedAt || 0, realSol, virtualSol, virtualToken, graduated,
           });
         }

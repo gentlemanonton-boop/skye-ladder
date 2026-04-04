@@ -130,15 +130,15 @@ pub fn handler<'info>(
 fn read_pool_price(pool_data: &AccountInfo) -> Result<u64> {
     let data = pool_data.try_borrow_data()?;
     require!(data.len() >= 216, SkyeLadderError::InvalidPool);
-    let skye = u64::from_le_bytes(data[200..208].try_into().unwrap());
-    let wsol = u64::from_le_bytes(data[208..216].try_into().unwrap());
+    let skye = u64::from_le_bytes(data[200..208].try_into().map_err(|_| SkyeLadderError::InvalidPool)?);
+    let wsol = u64::from_le_bytes(data[208..216].try_into().map_err(|_| SkyeLadderError::InvalidPool)?);
     require!(skye > 0 && wsol > 0, SkyeLadderError::ZeroPrice);
     Ok((wsol as u128 * PRICE_SCALE / skye as u128) as u64)
 }
 
 fn read_pool_skye(pool_data: &AccountInfo) -> Result<u64> {
     let data = pool_data.try_borrow_data()?;
-    Ok(u64::from_le_bytes(data[200..208].try_into().unwrap()))
+    Ok(u64::from_le_bytes(data[200..208].try_into().map_err(|_| SkyeLadderError::InvalidPool)?))
 }
 
 #[derive(Accounts)]

@@ -13,10 +13,7 @@ import {
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
 import { storeToken } from "../lib/launchStore";
-
-const SKYE_LADDER_ID = new PublicKey("4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz");
-const SKYE_CURVE_ID = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
-const DECIMALS = 9;
+import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS } from "../constants";
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
 const LAUNCH_DISC = new Uint8Array([10,128,86,171,3,137,161,244]);

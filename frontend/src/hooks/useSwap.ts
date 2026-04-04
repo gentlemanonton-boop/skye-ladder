@@ -11,11 +11,8 @@ import {
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
-import { SKYE_MINT, SKYE_LADDER_PROGRAM_ID } from "../constants";
+import { SKYE_MINT, SKYE_LADDER_PROGRAM_ID, SKYE_CURVE_ID, SWAP_DISC } from "../constants";
 import { getCurvePDA, getWalletRecordPDA, getConfigPDA, getExtraMetasPDA } from "../lib/pda";
-
-const SKYE_CURVE_ID = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
-const SWAP_DISC = new Uint8Array([248,198,158,145,225,117,135,200]);
 
 export function useSwap() {
   const { connection } = useConnection();

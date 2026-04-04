@@ -10,6 +10,9 @@ export const SKYE_LADDER_PROGRAM_ID = new PublicKey(
 export const SKYE_AMM_PROGRAM_ID = new PublicKey(
   "GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX"
 );
+export const SKYE_CURVE_ID = new PublicKey(
+  "5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf"
+);
 export const SKYE_MINT = new PublicKey(
   "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF"
 );
@@ -17,3 +20,4 @@ export const WSOL_MINT = NATIVE_MINT;
 export const DECIMALS = 9;
 export const TOTAL_SUPPLY = 1_000_000_000;
 export const PRICE_SCALE = 1e18;
+export const SWAP_DISC = new Uint8Array([248,198,158,145,225,117,135,200]);

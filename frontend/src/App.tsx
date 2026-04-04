@@ -32,7 +32,7 @@ export default function App() {
   const { pool, loading, error: poolError } = usePool();
   const { positions } = useWalletRecord();
   const solUsd = useSolPrice();
-  const { solBalance } = useBalances();
+  const { solBalance, skyeBalance } = useBalances();
   const [tab, setTab] = useState<Tab>("trade");
 
   const currentPrice = pool ? pool.wsolAmount / pool.skyeAmount : 0;
@@ -101,7 +101,7 @@ export default function App() {
           <>
             {tab === "trade" && (
               <>
-                <SwapPanel currentPrice={currentPrice} solUsd={solUsd} />
+                <SwapPanel currentPrice={currentPrice} solUsd={solUsd} pool={pool} positions={positions} solBalance={solBalance} skyeBalance={skyeBalance} />
                 <Portfolio currentPrice={currentPrice} solUsd={solUsd} />
                 <UnlockProgress positions={positions} currentPrice={currentPrice} />
                 <TierBreakdown positions={positions} currentPrice={currentPrice} />

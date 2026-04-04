@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
 import { SKYE_AMM_PROGRAM_ID } from "../constants";
+import { parseTradeLogs } from "../lib/parseTrade";
 
 export interface LiveTrade {
   id: string;
@@ -13,6 +13,7 @@ export interface LiveTrade {
 }
 
 const MAX_TRADES = 15;
+const MAX_SEEN = 100;
 
 export function useLiveTrades() {
   const { connection } = useConnection();
@@ -24,64 +25,52 @@ export function useLiveTrades() {
   useEffect(() => {
     let cancelled = false;
 
-    // Poll recent signatures for the AMM program
     async function poll() {
       try {
         const sigs = await connection.getSignaturesForAddress(
           SKYE_AMM_PROGRAM_ID, { limit: 5 }, "confirmed"
         );
 
-        for (const s of sigs) {
-          if (cancelled || seenRef.current.has(s.signature)) continue;
+        const newSigs = sigs.filter(s => !seenRef.current.has(s.signature));
+        if (newSigs.length === 0) return;
+
+        const txs = await Promise.allSettled(
+          newSigs.map(s => connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 }))
+        );
+
+        for (let i = 0; i < newSigs.length; i++) {
+          if (cancelled) break;
+          const s = newSigs[i];
           seenRef.current.add(s.signature);
 
-          try {
-            const tx = await connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 });
-            if (!tx?.meta?.logMessages) continue;
+          const result = txs[i];
+          if (result.status !== "fulfilled" || !result.value?.meta?.logMessages) continue;
 
-            const logs = tx.meta.logMessages;
-            const buyLog = logs.find(l => l.includes("BUY:") && l.includes("WSOL"));
-            const sellLog = logs.find(l => l.includes("SELL:") && l.includes("SKYE"));
-
-            if (buyLog) {
-              const m = buyLog.match(/BUY: (\d+) WSOL -> (\d+) SKYE/);
-              if (m) {
-                const trade: LiveTrade = {
-                  id: s.signature,
-                  type: "buy",
-                  solAmount: parseInt(m[1]),
-                  skyeAmount: parseInt(m[2]),
-                  timestamp: s.blockTime || Math.floor(Date.now() / 1000),
-                  signature: s.signature,
-                };
-                if (!cancelled) {
-                  setTrades(prev => [trade, ...prev].slice(0, MAX_TRADES));
-                }
-              }
-            } else if (sellLog) {
-              const m = sellLog.match(/SELL: (\d+) SKYE -> (\d+) WSOL/);
-              if (m) {
-                const trade: LiveTrade = {
-                  id: s.signature,
-                  type: "sell",
-                  skyeAmount: parseInt(m[1]),
-                  solAmount: parseInt(m[2]),
-                  timestamp: s.blockTime || Math.floor(Date.now() / 1000),
-                  signature: s.signature,
-                };
-                if (!cancelled) {
-                  setTrades(prev => [trade, ...prev].slice(0, MAX_TRADES));
-                }
-              }
+          const parsed = parseTradeLogs(result.value.meta.logMessages);
+          if (parsed) {
+            const trade: LiveTrade = {
+              id: s.signature,
+              type: parsed.type,
+              solAmount: parsed.solAmount,
+              skyeAmount: parsed.skyeAmount,
+              timestamp: s.blockTime || Math.floor(Date.now() / 1000),
+              signature: s.signature,
+            };
+            if (!cancelled) {
+              setTrades(prev => [trade, ...prev].slice(0, MAX_TRADES));
             }
-          } catch { /* skip failed fetches */ }
+          }
+        }
+
+        // Trim seen set to prevent unbounded growth
+        if (seenRef.current.size > MAX_SEEN) {
+          const arr = [...seenRef.current];
+          seenRef.current = new Set(arr.slice(-MAX_SEEN / 2));
         }
       } catch { /* ignore */ }
     }
 
-    // Initial load
     poll();
-    // Poll every 8 seconds
     const interval = setInterval(poll, 8000);
 
     return () => { cancelled = true; clearInterval(interval); };

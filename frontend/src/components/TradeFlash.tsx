@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
-const SKYE_CURVE_ID = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
+import { useLiveTrades, type LiveTrade } from "../hooks/useLiveTrades";
 
 interface Flash {
   id: number;
@@ -12,50 +10,26 @@ interface Flash {
 let flashId = 0;
 
 export function TradeFlash() {
-  const { connection } = useConnection();
+  const trades = useLiveTrades();
   const [flashes, setFlashes] = useState<Flash[]>([]);
+  const [lastSeen, setLastSeen] = useState<string | null>(null);
 
+  // Convert new trades into flash notifications
   useEffect(() => {
-    const seen = new Set<string>();
-    let cancelled = false;
+    if (trades.length === 0) return;
+    const latest = trades[0];
+    if (latest.signature === lastSeen) return;
+    setLastSeen(latest.signature);
 
-    async function poll() {
-      try {
-        const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: 3 });
-        for (const s of sigs) {
-          if (cancelled || seen.has(s.signature)) continue;
-          seen.add(s.signature);
-          if (seen.size > 50) { const arr = [...seen]; seen.clear(); arr.slice(-20).forEach(x => seen.add(x)); }
-
-          try {
-            const tx = await connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 });
-            const logs = tx?.meta?.logMessages || [];
-            const buyLog = logs.find(l => l.includes("BUY:") && l.includes("WSOL"));
-            const sellLog = logs.find(l => l.includes("SELL:") && l.includes("SKYE"));
-
-            if (buyLog) {
-              const m = buyLog.match(/BUY: (\d+) WSOL/);
-              if (m) {
-                const sol = (parseInt(m[1]) / 1e9).toFixed(3);
-                setFlashes(prev => [...prev, { id: ++flashId, type: "buy", amount: sol + " SOL" }]);
-              }
-            } else if (sellLog) {
-              const m = sellLog.match(/SELL: (\d+) SKYE/);
-              if (m) {
-                const tokens = parseInt(m[1]) / 1e9;
-                const display = tokens >= 1e6 ? (tokens/1e6).toFixed(1)+"M" : tokens >= 1e3 ? (tokens/1e3).toFixed(1)+"K" : tokens.toFixed(0);
-                setFlashes(prev => [...prev, { id: ++flashId, type: "sell", amount: display + " SKYE" }]);
-              }
-            }
-          } catch {}
-        }
-      } catch {}
+    if (latest.type === "buy") {
+      const sol = (latest.solAmount / 1e9).toFixed(3);
+      setFlashes(prev => [...prev, { id: ++flashId, type: "buy", amount: sol + " SOL" }]);
+    } else {
+      const tokens = latest.skyeAmount / 1e9;
+      const display = tokens >= 1e6 ? (tokens/1e6).toFixed(1)+"M" : tokens >= 1e3 ? (tokens/1e3).toFixed(1)+"K" : tokens.toFixed(0);
+      setFlashes(prev => [...prev, { id: ++flashId, type: "sell", amount: display + " SKYE" }]);
     }
-
-    poll();
-    const interval = setInterval(poll, 8000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [connection]);
+  }, [trades, lastSeen]);
 
   // Auto-remove flashes after animation
   useEffect(() => {

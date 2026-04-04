@@ -1,7 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import { SKYE_AMM_PROGRAM_ID, SKYE_LADDER_PROGRAM_ID, SKYE_MINT, WSOL_MINT } from "../constants";
-
-const SKYE_CURVE_ID = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
+import { SKYE_AMM_PROGRAM_ID, SKYE_CURVE_ID, SKYE_LADDER_PROGRAM_ID, SKYE_MINT, WSOL_MINT } from "../constants";
 
 export function getCurvePDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(

@@ -1,22 +1,25 @@
 import { useState } from "react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { usePool } from "../hooks/usePool";
 import { useSwap } from "../hooks/useSwap";
-import { useWalletRecord } from "../hooks/useWalletRecord";
-import { useBalances } from "../hooks/useBalances";
 import { computeSwapOutput, formatTokens, rawToHuman, formatUsd } from "../lib/format";
 import { getTotalSellable, getInitialBackTokens } from "../lib/unlock";
 import { DECIMALS } from "../constants";
+import type { PoolState } from "../hooks/usePool";
+import type { Position } from "../lib/unlock";
 
-interface Props { currentPrice: number; solUsd: number; }
+interface Props {
+  currentPrice: number;
+  solUsd: number;
+  pool: PoolState | null;
+  positions: Position[];
+  solBalance: number | null;
+  skyeBalance: number | null;
+}
 
-export function SwapPanel({ currentPrice, solUsd }: Props) {
+export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, skyeBalance }: Props) {
   const { publicKey } = useWallet();
-  const { pool } = usePool();
   const { swap, pending, lastTx, error } = useSwap();
-  const { positions } = useWalletRecord();
-  const { solBalance, skyeBalance } = useBalances();
   const [buy, setBuy] = useState(true);
   const [amount, setAmount] = useState("");
 
