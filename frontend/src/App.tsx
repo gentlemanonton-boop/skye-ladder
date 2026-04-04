@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { usePool } from "./hooks/usePool";
 import { useWalletRecord } from "./hooks/useWalletRecord";
@@ -6,24 +7,37 @@ import { formatUsd } from "./lib/format";
 import { SwapPanel } from "./components/SwapPanel";
 import { UnlockProgress } from "./components/UnlockProgress";
 import { TierBreakdown } from "./components/TierBreakdown";
-import { ActivityButton } from "./components/Activity";
-import { ChartButton } from "./components/ChartModal";
+import { ActivityTab } from "./components/ActivityTab";
+import { ChartTab } from "./components/ChartTab";
 
 const LOGO = "https://gateway.irys.xyz/7KOIQD6D5bArYKAyOz8xtSmDDGKV7DbMOLo4oUhOlHI";
+
+type Tab = "trade" | "chart" | "activity";
+
+// Error boundary so chart can never crash the app
+class SafeChart extends React.Component<{}, { err: boolean }> {
+  state = { err: false };
+  static getDerivedStateFromError() { return { err: true }; }
+  render() {
+    if (this.state.err) return <div className="bg-gray-100 rounded-2xl p-8 text-center text-ink-tertiary text-[13px]">Chart unavailable</div>;
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const { pool, loading, error: poolError } = usePool();
   const { positions } = useWalletRecord();
   const solUsd = useSolPrice();
+  const [tab, setTab] = useState<Tab>("trade");
 
   const currentPrice = pool ? pool.wsolAmount / pool.skyeAmount : 0;
-  const pricePerTokenSol = currentPrice;
-  const priceUsd = pricePerTokenSol * solUsd;
-  const mcSol = pricePerTokenSol * 1e9;
+  const priceUsd = currentPrice * solUsd;
+  const mcSol = currentPrice * 1e9;
   const mcUsd = mcSol * solUsd;
 
   return (
     <div className="min-h-screen bg-surface-bg">
+      {/* Header */}
       <header className="sticky top-0 z-20 bg-white/70 backdrop-blur-xl border-b border-gray-200/60">
         <div className="max-w-2xl mx-auto px-4 sm:px-5 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -38,14 +52,35 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            <ChartButton />
-            <ActivityButton />
-            <WalletMultiButton />
-          </div>
+          <WalletMultiButton />
         </div>
       </header>
 
+      {/* Tab bar — sticky below header */}
+      <div className="sticky top-14 sm:top-16 z-10 bg-surface-bg border-b border-gray-200/60">
+        <div className="max-w-2xl mx-auto px-4 sm:px-5 flex">
+          {([
+            { id: "trade" as Tab, label: "Trade" },
+            { id: "chart" as Tab, label: "Chart" },
+            { id: "activity" as Tab, label: "Activity" },
+          ]).map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex-1 py-3 text-[13px] sm:text-[14px] font-semibold text-center transition-colors relative ${
+                tab === id ? "text-skye-600" : "text-ink-tertiary hover:text-ink-secondary"
+              }`}
+            >
+              {label}
+              {tab === id && (
+                <div className="absolute bottom-0 left-1/4 right-1/4 h-[2px] bg-skye-500 rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
       <main className="max-w-2xl mx-auto px-4 sm:px-5 pt-6 sm:pt-8 pb-16 space-y-5 sm:space-y-6">
         {loading ? (
           <div className="flex items-center justify-center py-24">
@@ -55,15 +90,23 @@ export default function App() {
           <div className="bg-surface-card rounded-2xl border border-gray-200/80 p-8 text-center space-y-3">
             <p className="text-ink-primary font-semibold">Failed to load pool</p>
             <p className="text-ink-tertiary text-[13px]">{poolError}</p>
-            <button onClick={() => window.location.reload()} className="text-skye-500 text-[13px] font-semibold hover:underline">
-              Retry
-            </button>
+            <button onClick={() => window.location.reload()} className="text-skye-500 text-[13px] font-semibold hover:underline">Retry</button>
           </div>
         ) : (
           <>
-            <SwapPanel currentPrice={currentPrice} solUsd={solUsd} />
-            <UnlockProgress positions={positions} currentPrice={currentPrice} />
-            <TierBreakdown positions={positions} currentPrice={currentPrice} />
+            {tab === "trade" && (
+              <>
+                <SwapPanel currentPrice={currentPrice} solUsd={solUsd} />
+                <UnlockProgress positions={positions} currentPrice={currentPrice} />
+                <TierBreakdown positions={positions} currentPrice={currentPrice} />
+              </>
+            )}
+            {tab === "chart" && (
+              <SafeChart>
+                <ChartTab />
+              </SafeChart>
+            )}
+            {tab === "activity" && <ActivityTab />}
           </>
         )}
       </main>

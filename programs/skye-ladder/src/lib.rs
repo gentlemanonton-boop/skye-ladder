@@ -51,6 +51,10 @@ pub mod skye_ladder {
         instructions::admin::update_extra_metas(ctx)
     }
 
+    pub fn claim_rewards<'info>(ctx: Context<'_, '_, 'info, 'info, ClaimRewards<'info>>, position_index: u8) -> Result<()> {
+        instructions::claim_rewards::handler(ctx, position_index)
+    }
+
     pub fn set_paused(ctx: Context<AdminAction>, paused: bool) -> Result<()> {
         instructions::admin::set_paused(ctx, paused)
     }

@@ -45,6 +45,8 @@ mod comprehensive {
             token_balance: tokens,
             unlocked_bps: 0,
             original_balance: tokens,
+            sold_before_5x: false,
+            claimed: false,
         }
     }
 
@@ -194,6 +196,8 @@ mod comprehensive {
             token_balance: 333, // odd number
             unlocked_bps: 0,
             original_balance: 333,
+            sold_before_5x: false,
+            claimed: false,
         };
         let cp = price_at_mult(p.entry_price, 5.0); // 62.5%
         let (sellable, _) = sellable_tokens(cp, &mut p).unwrap();

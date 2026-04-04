@@ -119,10 +119,21 @@ fn load_wallet_record_mut(account: &AccountInfo) -> Result<WalletRecord> {
             bump: 0,
         });
     }
-    // Pass full data including 8-byte discriminator to try_deserialize
+    // Try to deserialize. If the layout changed (migration), return empty record.
+    // Old positions are lost but new buys create proper positions.
     let mut slice: &[u8] = &data;
-    WalletRecord::try_deserialize(&mut slice)
-        .map_err(|_| error!(SkyeLadderError::MathOverflow))
+    match WalletRecord::try_deserialize(&mut slice) {
+        Ok(record) => Ok(record),
+        Err(_) => Ok(WalletRecord {
+            owner: account.key(),
+            mint: Pubkey::default(),
+            position_count: 0,
+            positions: vec![],
+            last_buy_slot: 0,
+            slot_buy_usd: 0,
+            bump: 0,
+        }),
+    }
 }
 
 /// Serialize a WalletRecord back into its AccountInfo.

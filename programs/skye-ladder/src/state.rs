@@ -12,6 +12,9 @@ pub const BPS_DENOMINATOR: u32 = 10_000;
 /// Merge threshold: 10% proximity (1_000 bps)
 pub const MERGE_THRESHOLD_BPS: u64 = 1_000;
 
+/// 5x multiplier threshold in mult-scaled units (mult * 10_000)
+pub const MULT_5X: u128 = 50_000;
+
 /// Global configuration for the Skye Ladder program.
 #[account]
 #[derive(InitSpace)]
@@ -44,9 +47,9 @@ pub struct WalletRecord {
     /// Independent buy positions (fixed array, use position_count for active)
     #[max_len(10)]
     pub positions: Vec<Position>,
-    /// Slot of the last buy (for per-block buy limits)
+    /// Slot of the last buy (for per-block buy limits — legacy, unused)
     pub last_buy_slot: u64,
-    /// Accumulated USD bought in the current slot, scaled by 10^6
+    /// Legacy field (unused)
     pub slot_buy_usd: u64,
     /// Bump seed for this PDA
     pub bump: u8,
@@ -61,12 +64,15 @@ pub struct Position {
     pub initial_sol: u64,
     /// Current token balance in this position (raw lamports)
     pub token_balance: u64,
-    /// High-water mark of unlocked basis points (0–10_000)
+    /// High-water mark of unlocked basis points (0-10_000)
     pub unlocked_bps: u32,
     /// Original token balance at time of buy (before any sells).
-    /// Sellable is computed from this, not from token_balance.
-    /// 0 = legacy position (treat as token_balance for backwards compat).
     pub original_balance: u64,
+    /// True if any sell was executed while multiplier < 5x.
+    /// Once set, never clears. Merged positions inherit dirty flag.
+    pub sold_before_5x: bool,
+    /// True after claim_rewards has been called on this position.
+    pub claimed: bool,
 }
 
 impl Position {

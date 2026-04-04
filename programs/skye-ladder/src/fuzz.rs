@@ -342,6 +342,8 @@ mod fuzz_tests {
                 token_balance: tokens,
                 unlocked_bps: 0,
                 original_balance: tokens,
+            sold_before_5x: false,
+            claimed: false,
             };
 
             // Random current price from 0.01x to 100x
@@ -411,6 +413,8 @@ mod fuzz_tests {
                 token_balance: tokens,
                 unlocked_bps: 0,
                 original_balance: tokens,
+            sold_before_5x: false,
+            claimed: false,
             };
 
             // Walk the price up and down randomly

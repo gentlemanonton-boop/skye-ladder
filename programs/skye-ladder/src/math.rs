@@ -239,6 +239,8 @@ mod tests {
             token_balance: tokens,
             unlocked_bps: 0,
             original_balance: tokens,
+            sold_before_5x: false,
+            claimed: false,
         }
     }
 
@@ -495,6 +497,8 @@ mod tests {
             token_balance: 1_000_000_000,
             unlocked_bps: 0,
             original_balance: 1_000_000_000,
+            sold_before_5x: false,
+            claimed: false,
         };
         let result = calculate_unlocked_bps(1000, &pos);
         assert!(result.is_err());
@@ -511,6 +515,8 @@ mod tests {
             token_balance: 1,
             unlocked_bps: 0,
             original_balance: 1,
+            sold_before_5x: false,
+            claimed: false,
         };
         let price = ep * 2; // 2x
         let bps = calculate_unlocked_bps(price, &pos).unwrap();

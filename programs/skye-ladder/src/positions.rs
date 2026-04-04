@@ -1,7 +1,7 @@
 use crate::errors::SkyeLadderError;
 use crate::math;
 use crate::state::{
-    Position, WalletRecord, MAX_POSITIONS, MERGE_THRESHOLD_BPS, PRICE_SCALE,
+    Position, WalletRecord, MAX_POSITIONS, MERGE_THRESHOLD_BPS, PRICE_SCALE, MULT_5X,
 };
 use anchor_lang::prelude::*;
 
@@ -52,6 +52,8 @@ pub fn on_buy(
         token_balance: tokens_bought,
         unlocked_bps: 0,
         original_balance: tokens_bought,
+        sold_before_5x: false,
+        claimed: false,
     });
     wallet.position_count = wallet.positions.len() as u8;
 
@@ -128,11 +130,19 @@ pub fn on_sell(
     // ── Phase 2: Apply deductions (we know the sell is valid) ──
     for (idx, take, bps) in &deductions {
         let pos = &mut wallet.positions[*idx];
-        pos.unlocked_bps = *bps; // Apply high-water mark
+        pos.unlocked_bps = *bps;
         pos.token_balance = pos
             .token_balance
             .checked_sub(*take)
             .ok_or(SkyeLadderError::MathOverflow)?;
+
+        // Mark sold_before_5x if multiplier < 5x
+        if pos.entry_price > 0 {
+            let mult = (current_price as u128) * 10_000 / (pos.entry_price as u128);
+            if mult < MULT_5X {
+                pos.sold_before_5x = true;
+            }
+        }
     }
 
     // Clean up empty positions
@@ -210,8 +220,8 @@ fn merge_into_position(
     existing.original_balance = old_original
         .checked_add(new_tokens)
         .ok_or(SkyeLadderError::MathOverflow)? as u64;
-    // Keep the higher unlocked_bps (conservative for the holder)
-    // New buy starts at 0, so existing.unlocked_bps is always >= 0
+    // Dirty flag: existing keeps its flag (new buy is always clean)
+    // claimed stays as-is (new buy doesn't affect claim status)
 
     Ok(())
 }
@@ -274,6 +284,12 @@ fn merge_closest_pair(positions: &mut Vec<Position>) -> Result<()> {
     // Keep the higher unlocked_bps of the two
     positions[merge_a].unlocked_bps =
         positions[merge_a].unlocked_bps.max(pos_b.unlocked_bps);
+    // If either position sold before 5x, merged position is dirty
+    positions[merge_a].sold_before_5x =
+        positions[merge_a].sold_before_5x || pos_b.sold_before_5x;
+    // If either was claimed, merged is claimed
+    positions[merge_a].claimed =
+        positions[merge_a].claimed || pos_b.claimed;
 
     positions.remove(merge_b);
     Ok(())
@@ -314,11 +330,17 @@ fn consolidate_fully_unlocked(positions: &mut Vec<Position>, current_price: u64)
     }
 
     // Use current_price as entry for the consolidated position (it's fully unlocked anyway)
+    // Consolidate dirty/claimed flags
+    let any_dirty = fully_unlocked.iter().any(|&i| positions[i].sold_before_5x);
+    let any_claimed = fully_unlocked.iter().any(|&i| positions[i].claimed);
+
     positions[first].entry_price = current_price;
     positions[first].initial_sol = total_sol as u64;
     positions[first].token_balance = total_tokens as u64;
     positions[first].original_balance = total_original as u64;
     positions[first].unlocked_bps = 10_000;
+    positions[first].sold_before_5x = any_dirty;
+    positions[first].claimed = any_claimed;
 
     // Remove the others (in reverse order to preserve indices)
     for &idx in fully_unlocked.iter().skip(1).rev() {
@@ -544,6 +566,8 @@ mod tests {
             token_balance: 1_000_000_000,
             unlocked_bps: 0,
             original_balance: 0,
+            sold_before_5x: false,
+            claimed: false,
         }];
         assert_eq!(
             find_mergeable_position(&positions, price(0.000003)),
@@ -559,6 +583,8 @@ mod tests {
             token_balance: 1_000_000_000,
             unlocked_bps: 0,
             original_balance: 0,
+            sold_before_5x: false,
+            claimed: false,
         }];
         // 9% higher — should merge (within 10% threshold)
         assert!(find_mergeable_position(&positions, price(0.00000327)).is_some());
@@ -575,6 +601,8 @@ mod tests {
                 token_balance: 100_000_000,
                 unlocked_bps: 0,
                 original_balance: 100_000_000,
+            sold_before_5x: false,
+            claimed: false,
             },
             Position {
                 entry_price: price(0.00005),
@@ -582,6 +610,8 @@ mod tests {
                 token_balance: 100_000_000,
                 unlocked_bps: 0,
                 original_balance: 100_000_000,
+            sold_before_5x: false,
+            claimed: false,
             },
             Position {
                 entry_price: price(0.00006),
@@ -589,6 +619,8 @@ mod tests {
                 token_balance: 100_000_000,
                 unlocked_bps: 0,
                 original_balance: 100_000_000,
+            sold_before_5x: false,
+            claimed: false,
             },
         ];
 

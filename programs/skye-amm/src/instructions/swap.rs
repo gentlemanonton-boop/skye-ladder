@@ -13,17 +13,9 @@ use crate::math;
 use crate::state::Pool;
 use super::add_liquidity::transfer_token2022_with_hook;
 
-/// Byte offsets for cached reserves in the Pool account data.
-/// Must match the Borsh layout: 8 (disc) + 6*32 (pubkeys) = 200.
 const SKYE_AMOUNT_OFFSET: usize = 200;
 const WSOL_AMOUNT_OFFSET: usize = 208;
 
-/// Flush the updated skye_amount and wsol_amount to the Pool PDA's raw
-/// account data BEFORE doing the Token-2022 CPI. This is necessary because
-/// Anchor only serializes account data after the instruction handler returns,
-/// but the transfer hook reads the Pool PDA's raw bytes during the CPI to
-/// compute the spot price. Without this flush, the hook sees stale pre-swap
-/// reserves and records the wrong entry_price.
 fn flush_pool_reserves(pool: &Account<'_, Pool>) -> Result<()> {
     let info = pool.to_account_info();
     let mut data = info.try_borrow_mut_data()?;
@@ -34,9 +26,6 @@ fn flush_pool_reserves(pool: &Account<'_, Pool>) -> Result<()> {
     Ok(())
 }
 
-/// Swap handler.
-/// - `buy = true`:  user sends WSOL, receives SKYE (SOL -> SKYE)
-/// - `buy = false`: user sends SKYE, receives WSOL (SKYE -> SOL)
 pub fn handler<'info>(
     ctx: Context<'_, '_, 'info, 'info, Swap<'info>>,
     amount_in: u64,
@@ -47,52 +36,123 @@ pub fn handler<'info>(
 
     let pool = &ctx.accounts.pool;
     let fee_bps = pool.fee_bps;
+    let has_fee_config = pool.team_wallet != Pubkey::default()
+        && pool.diamond_vault != Pubkey::default()
+        && pool.strong_vault != Pubkey::default();
+
+    let skye_mint_key = pool.skye_mint;
+    let wsol_mint_key = pool.wsol_mint;
+    let pool_bump = pool.bump;
+
+    let pool_seeds: &[&[u8]] = &[
+        b"pool",
+        skye_mint_key.as_ref(),
+        wsol_mint_key.as_ref(),
+        &[pool_bump],
+    ];
 
     if buy {
         // ── BUY: WSOL in, SKYE out ──
-        let (skye_out, _fee) = math::compute_swap_output(
-            pool.wsol_amount,
-            pool.skye_amount,
-            amount_in,
-            fee_bps,
+        let (skye_out, fee) = math::compute_swap_output(
+            pool.wsol_amount, pool.skye_amount, amount_in, fee_bps,
         )?;
         require!(skye_out >= min_amount_out, SkyeAmmError::SlippageExceeded);
 
-        // Update reserves BEFORE transfers (checks-effects-interactions)
+        // Split fee: 50% team, 25% pool, 17.5% diamond, 7.5% strong
+        let (team_fee, _pool_fee, diamond_fee, strong_fee) = if has_fee_config && fee > 0 {
+            math::split_fee(fee)
+        } else {
+            (0u64, fee, 0u64, 0u64)
+        };
+
+        // Update reserves — full amount_in minus team and vault shares enter pool
+        let pool_receives = amount_in - team_fee - diamond_fee - strong_fee;
         let pool = &mut ctx.accounts.pool;
-        pool.wsol_amount = pool.wsol_amount.checked_add(amount_in)
+        pool.wsol_amount = pool.wsol_amount.checked_add(pool_receives)
             .ok_or(SkyeAmmError::MathOverflow)?;
         pool.skye_amount = pool.skye_amount.checked_sub(skye_out)
             .ok_or(SkyeAmmError::MathOverflow)?;
 
-        // Flush to raw account data so the hook reads post-swap price
         flush_pool_reserves(pool)?;
 
-        // Transfer WSOL in (standard Token)
+        // Transfer WSOL in: pool's share to reserve
         token_interface::transfer_checked(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                TransferChecked {
-                    from: ctx.accounts.user_wsol_account.to_account_info(),
-                    mint: ctx.accounts.wsol_mint.to_account_info(),
-                    to: ctx.accounts.wsol_reserve.to_account_info(),
-                    authority: ctx.accounts.user.to_account_info(),
-                },
-            ),
-            amount_in,
+            CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                from: ctx.accounts.user_wsol_account.to_account_info(),
+                mint: ctx.accounts.wsol_mint.to_account_info(),
+                to: ctx.accounts.wsol_reserve.to_account_info(),
+                authority: ctx.accounts.user.to_account_info(),
+            }),
+            pool_receives,
             ctx.accounts.wsol_mint.decimals,
         )?;
 
-        // Transfer SKYE out (Token-2022, pool PDA signs — triggers hook as "buy")
-        let skye_mint_key = ctx.accounts.pool.skye_mint;
-        let wsol_mint_key = ctx.accounts.pool.wsol_mint;
-        let pool_seeds: &[&[u8]] = &[
-            b"pool",
-            skye_mint_key.as_ref(),
-            wsol_mint_key.as_ref(),
-            &[ctx.accounts.pool.bump],
-        ];
+        // Transfer WSOL fee to team wallet
+        if team_fee > 0 {
+            if let Some(team_account) = ctx.remaining_accounts.iter().find(|a| a.is_writable && a.key() == ctx.accounts.pool.team_wallet) {
+                // Team wallet is a WSOL token account passed in remaining_accounts
+                token_interface::transfer_checked(
+                    CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                        from: ctx.accounts.user_wsol_account.to_account_info(),
+                        mint: ctx.accounts.wsol_mint.to_account_info(),
+                        to: team_account.clone(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    }),
+                    team_fee,
+                    ctx.accounts.wsol_mint.decimals,
+                )?;
+            } else {
+                // Team account not provided — send to pool instead
+                token_interface::transfer_checked(
+                    CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                        from: ctx.accounts.user_wsol_account.to_account_info(),
+                        mint: ctx.accounts.wsol_mint.to_account_info(),
+                        to: ctx.accounts.wsol_reserve.to_account_info(),
+                        authority: ctx.accounts.user.to_account_info(),
+                    }),
+                    team_fee,
+                    ctx.accounts.wsol_mint.decimals,
+                )?;
+                let pool = &mut ctx.accounts.pool;
+                pool.wsol_amount = pool.wsol_amount.checked_add(team_fee)
+                    .ok_or(SkyeAmmError::MathOverflow)?;
+            }
+        }
 
+        // Transfer fees to diamond and strong vaults
+        for (vault_fee, vault_key) in [(diamond_fee, ctx.accounts.pool.diamond_vault), (strong_fee, ctx.accounts.pool.strong_vault)] {
+            if vault_fee > 0 {
+                if let Some(vault_account) = ctx.remaining_accounts.iter().find(|a| a.is_writable && a.key() == vault_key) {
+                    token_interface::transfer_checked(
+                        CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                            from: ctx.accounts.user_wsol_account.to_account_info(),
+                            mint: ctx.accounts.wsol_mint.to_account_info(),
+                            to: vault_account.clone(),
+                            authority: ctx.accounts.user.to_account_info(),
+                        }),
+                        vault_fee,
+                        ctx.accounts.wsol_mint.decimals,
+                    )?;
+                } else {
+                    // Vault not provided — falls back to pool
+                    token_interface::transfer_checked(
+                        CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                            from: ctx.accounts.user_wsol_account.to_account_info(),
+                            mint: ctx.accounts.wsol_mint.to_account_info(),
+                            to: ctx.accounts.wsol_reserve.to_account_info(),
+                            authority: ctx.accounts.user.to_account_info(),
+                        }),
+                        vault_fee,
+                        ctx.accounts.wsol_mint.decimals,
+                    )?;
+                    let pool = &mut ctx.accounts.pool;
+                    pool.wsol_amount = pool.wsol_amount.checked_add(vault_fee)
+                        .ok_or(SkyeAmmError::MathOverflow)?;
+                }
+            }
+        }
+
+        // Transfer SKYE out (Token-2022, triggers hook as "buy")
         transfer_token2022_with_hook(
             &ctx.accounts.skye_reserve.to_account_info(),
             &ctx.accounts.skye_mint.to_account_info(),
@@ -105,28 +165,36 @@ pub fn handler<'info>(
             pool_seeds,
         )?;
 
-        msg!("BUY: {} WSOL -> {} SKYE", amount_in, skye_out);
+        msg!("BUY: {} WSOL -> {} SKYE (fee: {} team, {} diamond, {} strong)", amount_in, skye_out, team_fee, diamond_fee, strong_fee);
     } else {
         // ── SELL: SKYE in, WSOL out ──
-        let (wsol_out, _fee) = math::compute_swap_output(
-            pool.skye_amount,
-            pool.wsol_amount,
-            amount_in,
-            fee_bps,
+        let (wsol_out, fee) = math::compute_swap_output(
+            pool.skye_amount, pool.wsol_amount, amount_in, fee_bps,
         )?;
         require!(wsol_out >= min_amount_out, SkyeAmmError::SlippageExceeded);
 
-        // Update reserves BEFORE transfers
+        // Fee is on the SKYE input side. But SKYE transfers trigger the hook.
+        // Simpler: take fees from WSOL output instead (pool already has the WSOL).
+        // Recompute: user gets wsol_out minus team and vault shares.
+        let (team_fee, _pool_fee, diamond_fee, strong_fee) = if has_fee_config && fee > 0 {
+            let wsol_fee = (wsol_out as u128) * (fee_bps as u128) / 10_000u128;
+            math::split_fee(wsol_fee as u64)
+        } else {
+            (0u64, 0u64, 0u64, 0u64)
+        };
+
+        let user_receives = wsol_out - team_fee - diamond_fee - strong_fee;
+
+        // Update reserves
         let pool = &mut ctx.accounts.pool;
         pool.skye_amount = pool.skye_amount.checked_add(amount_in)
             .ok_or(SkyeAmmError::MathOverflow)?;
         pool.wsol_amount = pool.wsol_amount.checked_sub(wsol_out)
             .ok_or(SkyeAmmError::MathOverflow)?;
 
-        // Flush to raw account data so the hook reads post-swap price
         flush_pool_reserves(pool)?;
 
-        // Transfer SKYE in (Token-2022 — triggers hook as "sell", enforces unlock)
+        // Transfer SKYE in (Token-2022 — triggers hook as "sell")
         transfer_token2022_with_hook(
             &ctx.accounts.user_skye_account.to_account_info(),
             &ctx.accounts.skye_mint.to_account_info(),
@@ -139,32 +207,54 @@ pub fn handler<'info>(
             &[],
         )?;
 
-        // Transfer WSOL out (standard Token, pool PDA signs)
-        let skye_mint_key = ctx.accounts.pool.skye_mint;
-        let wsol_mint_key = ctx.accounts.pool.wsol_mint;
-        let pool_seeds: &[&[u8]] = &[
-            b"pool",
-            skye_mint_key.as_ref(),
-            wsol_mint_key.as_ref(),
-            &[ctx.accounts.pool.bump],
-        ];
-
+        // Transfer WSOL out: user's portion
         token_interface::transfer_checked(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                TransferChecked {
-                    from: ctx.accounts.wsol_reserve.to_account_info(),
-                    mint: ctx.accounts.wsol_mint.to_account_info(),
-                    to: ctx.accounts.user_wsol_account.to_account_info(),
-                    authority: ctx.accounts.pool.to_account_info(),
-                },
-                &[pool_seeds],
-            ),
-            wsol_out,
+            CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                from: ctx.accounts.wsol_reserve.to_account_info(),
+                mint: ctx.accounts.wsol_mint.to_account_info(),
+                to: ctx.accounts.user_wsol_account.to_account_info(),
+                authority: ctx.accounts.pool.to_account_info(),
+            }, &[pool_seeds]),
+            user_receives,
             ctx.accounts.wsol_mint.decimals,
         )?;
 
-        msg!("SELL: {} SKYE -> {} WSOL", amount_in, wsol_out);
+        // Transfer team fee from pool reserves
+        if team_fee > 0 {
+            if let Some(team_account) = ctx.remaining_accounts.iter().find(|a| a.is_writable && a.key() == ctx.accounts.pool.team_wallet) {
+                token_interface::transfer_checked(
+                    CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                        from: ctx.accounts.wsol_reserve.to_account_info(),
+                        mint: ctx.accounts.wsol_mint.to_account_info(),
+                        to: team_account.clone(),
+                        authority: ctx.accounts.pool.to_account_info(),
+                    }, &[pool_seeds]),
+                    team_fee,
+                    ctx.accounts.wsol_mint.decimals,
+                )?;
+            }
+            // If team account not provided, fee stays in pool (wsol_out already deducted)
+        }
+
+        // Transfer vault fees from pool reserves
+        for (vault_fee, vault_key) in [(diamond_fee, ctx.accounts.pool.diamond_vault), (strong_fee, ctx.accounts.pool.strong_vault)] {
+            if vault_fee > 0 {
+                if let Some(vault_account) = ctx.remaining_accounts.iter().find(|a| a.is_writable && a.key() == vault_key) {
+                    token_interface::transfer_checked(
+                        CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                            from: ctx.accounts.wsol_reserve.to_account_info(),
+                            mint: ctx.accounts.wsol_mint.to_account_info(),
+                            to: vault_account.clone(),
+                            authority: ctx.accounts.pool.to_account_info(),
+                        }, &[pool_seeds]),
+                        vault_fee,
+                        ctx.accounts.wsol_mint.decimals,
+                    )?;
+                }
+            }
+        }
+
+        msg!("SELL: {} SKYE -> {} WSOL (fee: {} team, {} diamond, {} strong)", amount_in, user_receives, team_fee, diamond_fee, strong_fee);
     }
 
     Ok(())

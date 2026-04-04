@@ -88,6 +88,16 @@ pub fn compute_withdraw(
     Ok((skye_out as u64, wsol_out as u64))
 }
 
+/// Split fee: 50% team, 25% pool, 17.5% diamond, 7.5% strong.
+/// Returns (team, pool, diamond, strong). Remainder goes to pool.
+pub fn split_fee(fee: u64) -> (u64, u64, u64, u64) {
+    let team = fee / 2;                            // 50%
+    let diamond = fee * 175 / 1000;                // 17.5%
+    let strong = fee * 75 / 1000;                  // 7.5%
+    let pool = fee - team - diamond - strong;      // 25% + remainder
+    (team, pool, diamond, strong)
+}
+
 /// Integer square root via Newton's method.
 fn integer_sqrt(n: u128) -> u64 {
     if n == 0 {
@@ -120,6 +130,26 @@ mod tests {
     fn test_initial_lp() {
         let lp = compute_initial_lp(1_000_000, 1_000_000).unwrap();
         assert_eq!(lp, 1_000_000);
+    }
+
+    #[test]
+    fn test_fee_split() {
+        let (team, pool, diamond, strong) = split_fee(1000);
+        assert_eq!(team, 500);     // 50%
+        assert_eq!(diamond, 175);  // 17.5%
+        assert_eq!(strong, 75);    // 7.5%
+        assert_eq!(pool, 250);     // 25%
+        assert_eq!(team + pool + diamond + strong, 1000);
+    }
+
+    #[test]
+    fn test_fee_split_small() {
+        let (team, pool, diamond, strong) = split_fee(10);
+        assert_eq!(team, 5);
+        assert_eq!(diamond, 1);
+        assert_eq!(strong, 0);
+        // pool gets remainder
+        assert_eq!(team + pool + diamond + strong, 10);
     }
 
     #[test]

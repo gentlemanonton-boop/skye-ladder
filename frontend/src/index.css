@@ -13,10 +13,7 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Prevent iOS zoom on inputs */
-input[type="number"] {
-  font-size: 16px;
-}
+input[type="number"] { font-size: 16px; }
 
 /* Wallet adapter overrides */
 .wallet-adapter-button {
@@ -29,20 +26,7 @@ input[type="number"] {
   padding: 0 20px !important;
   transition: all 0.15s ease !important;
 }
-.wallet-adapter-button:hover {
-  background: #0284c7 !important;
-}
-.wallet-adapter-button-trigger {
-  background: #0ea5e9 !important;
-}
-.wallet-adapter-modal-wrapper {
-  font-family: 'Inter', sans-serif !important;
-}
+.wallet-adapter-button:hover { background: #0284c7 !important; }
+.wallet-adapter-button-trigger { background: #0ea5e9 !important; }
+.wallet-adapter-modal-wrapper { font-family: 'Inter', sans-serif !important; }
 
-@keyframes sheet-up {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-.animate-sheet {
-  animation: sheet-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-}
