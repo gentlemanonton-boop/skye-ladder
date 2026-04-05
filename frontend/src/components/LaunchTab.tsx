@@ -13,13 +13,15 @@ import {
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
 import { storeToken } from "../lib/launchStore";
+import { uploadAndCreateMetadata } from "../lib/metadataService";
 import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS } from "../constants";
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
 const LAUNCH_DISC = new Uint8Array([10,128,86,171,3,137,161,244]);
 
 export function LaunchTab() {
-  const { publicKey, sendTransaction } = useWallet();
+  const wallet = useWallet();
+  const { publicKey, sendTransaction } = wallet;
   const { connection } = useConnection();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -57,16 +59,6 @@ export function LaunchTab() {
     const mint = mintKeypair.publicKey;
 
     try {
-      // Build image data URI
-      let imageUri = "";
-      if (imageFile) {
-        const bytes = new Uint8Array(await imageFile.arrayBuffer());
-        // Browser-native base64 encoding
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        imageUri = `data:${imageFile.type};base64,${btoa(binary)}`;
-      }
-
       const provider = new AnchorProvider(
         connection, { publicKey, signTransaction: null, signAllTransactions: null } as any, { commitment: "confirmed" }
       );
@@ -114,9 +106,29 @@ export function LaunchTab() {
       await connection.confirmTransaction(sig1, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // TX 2: Create ATAs + launch curve + WalletRecord (1 approval)
+      // STEP 2: Upload metadata to Arweave + create Metaplex account
       // ══════════════════════════════════════════════════
       setStep(2);
+
+      let arweaveImageUri = "";
+      try {
+        arweaveImageUri = await uploadAndCreateMetadata({
+          wallet: wallet as any,
+          mint: mint.toBase58(),
+          name,
+          symbol,
+          description,
+          imageFile,
+        });
+      } catch (metaErr: any) {
+        // Non-fatal — token still works without Metaplex metadata
+        console.warn("Metadata upload failed (non-fatal):", metaErr);
+      }
+
+      // ══════════════════════════════════════════════════
+      // TX 3: Create ATAs + launch curve + WalletRecord (1 approval)
+      // ══════════════════════════════════════════════════
+      setStep(3);
 
       const launchData = Buffer.alloc(8 + 8 + 8 + 2);
       launchData.set(LAUNCH_DISC, 0);
@@ -151,9 +163,9 @@ export function LaunchTab() {
       await connection.confirmTransaction(sig2, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // TX 3: Pause + transfer supply + unpause (1 approval)
+      // TX 4: Pause + transfer supply + unpause (1 approval)
       // ══════════════════════════════════════════════════
-      setStep(3);
+      setStep(4);
 
       const pauseIx = await (ladderProgram.methods as any).setPaused(true).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
       const transferIx = createTransferCheckedInstruction(creatorATA, mint, tokenReserve, publicKey, supplyRaw, DECIMALS, [], TOKEN_2022_PROGRAM_ID);
@@ -165,15 +177,23 @@ export function LaunchTab() {
       const sig3 = await sendTransaction(tx3, connection);
       await connection.confirmTransaction(sig3, "confirmed");
 
-      // Store token metadata locally
+      // Store token metadata locally (use Arweave image if available, else data URI)
+      let localImageUri = arweaveImageUri;
+      if (!localImageUri && imageFile) {
+        const bytes = new Uint8Array(await imageFile.arrayBuffer());
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        localImageUri = `data:${imageFile.type};base64,${btoa(binary)}`;
+      }
+
       storeToken({
-        mint: mint.toBase58(), name, symbol, image: imageUri, description,
+        mint: mint.toBase58(), name, symbol, image: localImageUri, description,
         website, twitter, telegram, discord,
         curve: curvePDA.toBase58(), creator: publicKey.toBase58(),
         launchedAt: Math.floor(Date.now() / 1000),
       });
 
-      setStep(4);
+      setStep(5);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
 
     } catch (e: any) {
@@ -183,8 +203,8 @@ export function LaunchTab() {
     }
   }
 
-  const stepLabels = ["", "Creating token + hook...", "Setting up bonding curve...", "Transferring supply...", "Done!"];
-  const isLaunching = step > 0 && step < 4;
+  const stepLabels = ["", "Creating token + hook...", "Uploading metadata to Arweave...", "Setting up bonding curve...", "Transferring supply...", "Done!"];
+  const isLaunching = step > 0 && step < 5;
 
   return (
     <div className="space-y-6">
@@ -275,9 +295,9 @@ export function LaunchTab() {
               <span className="font-pixel text-[9px] text-skye-400">{stepLabels[step]}</span>
             </div>
             <div className="flex gap-1">
-              {[1,2,3].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
+              {[1,2,3,4].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
             </div>
-            <p className="text-[11px] text-ink-faint">Step {step} of 3 — approve in wallet</p>
+            <p className="text-[11px] text-ink-faint">Step {step} of 4{step === 2 ? "" : " — approve in wallet"}</p>
           </div>
         )}
 
@@ -308,7 +328,7 @@ export function LaunchTab() {
         <div className="space-y-2">
           {[
             { s: "01", t: "Fill in token details, upload image, add socials", c: "text-skye-400" },
-            { s: "02", t: "Approve 3 transactions to create everything on-chain", c: "text-lime-400" },
+            { s: "02", t: "Metadata + tokenomics uploaded to Arweave permanently", c: "text-lime-400" },
             { s: "03", t: "Token launches on bonding curve — price rises with buys", c: "text-emerald-400" },
             { s: "04", t: "Sell restrictions active from day one via Transfer Hook", c: "text-cyan-400" },
             { s: "05", t: "At 85 SOL, liquidity migrates to Skye AMM pool", c: "text-purple-400" },
