@@ -17,12 +17,12 @@ const TIERS = [
     example: "At 7.5x: 65.6% unlocked, then jumps to 75% at exactly 10x",
     accent: "bg-blue-500/10 border-blue-500/20", dot: "bg-blue-400", badge: "bg-blue-500", ring: "ring-blue-500/30" },
   { phase: 4, title: "Final Stretch", range: "10x \u2013 15x",
-    unlock: "75% at 10x \u2192 100% at 15x", growth: "Half rate, then full unlock at 15x milestone",
-    example: "At 12.5x: 81.25% unlocked, at 15x: 100% \u2014 all restrictions removed",
+    unlock: "75% at 10x \u2192 ~87.5% at 14.99x", growth: "Half rate between milestones, cliff jump to 100% at 15x",
+    example: "At 12.5x: 81.25% unlocked. At 14.99x: 87.5%. NOT 100% until exactly 15x",
     accent: "bg-indigo-500/10 border-indigo-500/20", dot: "bg-indigo-400", badge: "bg-indigo-500", ring: "ring-indigo-500/30" },
   { phase: 5, title: "Fully Unlocked", range: "15x+",
-    unlock: "100% unlocked", growth: "No restrictions",
-    example: "Sell any amount at any time. You earned it.",
+    unlock: "100% unlocked \u2014 cliff jump at 15x", growth: "No restrictions. All sell limits removed",
+    example: "The 15x milestone unlocks everything. Sell any amount at any time.",
     accent: "bg-emerald-500/10 border-emerald-500/20", dot: "bg-emerald-400", badge: "bg-emerald-500", ring: "ring-emerald-500/30" },
 ];
 
