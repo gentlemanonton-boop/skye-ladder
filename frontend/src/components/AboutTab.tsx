@@ -56,10 +56,10 @@ export function AboutTab() {
         <h3 className="font-pixel text-[10px] sm:text-[11px] text-amber-400 mb-5 tracking-wider">THE LADDER</h3>
         <div className="space-y-2">
           {[
-            { phase: "P1", range: "1x → 2x", desc: "Get your money back", pct: "100% → 50%", color: "from-amber-500/20 to-amber-500/5" },
-            { phase: "P2", range: "2x → 5x", desc: "Compressed growth", pct: "50% → 62.5%", color: "from-lime-500/20 to-lime-500/5" },
-            { phase: "P3", range: "5x → 10x", desc: "Compressed growth", pct: "62.5% → 75%", color: "from-emerald-500/20 to-emerald-500/5" },
-            { phase: "P4", range: "10x → 15x", desc: "Final stretch", pct: "75% → 100%", color: "from-cyan-500/20 to-cyan-500/5" },
+            { phase: "P1", range: "1x → 2x", desc: "Get your money back", pct: "~100% → ~50%", color: "from-amber-500/20 to-amber-500/5" },
+            { phase: "P2", range: "2x → 5x", desc: "Compressed, cliff 62.5% at 5x", pct: "50% → ~56.25%", color: "from-lime-500/20 to-lime-500/5" },
+            { phase: "P3", range: "5x → 10x", desc: "Compressed, cliff 75% at 10x", pct: "62.5% → ~68.75%", color: "from-emerald-500/20 to-emerald-500/5" },
+            { phase: "P4", range: "10x → 15x", desc: "Compressed, cliff 100% at 15x", pct: "75% → ~87.5%", color: "from-cyan-500/20 to-cyan-500/5" },
             { phase: "P5", range: "15x+", desc: "FULLY UNLOCKED", pct: "100%", color: "from-skye-500/20 to-skye-500/5" },
           ].map((p, i) => (
             <div key={i} className={`flex items-center gap-3 rounded-xl px-4 py-3 bg-gradient-to-r ${p.color} border border-white/5`}>

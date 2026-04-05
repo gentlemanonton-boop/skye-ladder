@@ -9,10 +9,10 @@ import type { WalletAdapter } from "@solana/wallet-adapter-base";
 import { RPC_URL } from "../constants";
 
 const SKYE_LADDER_ATTRIBUTES = [
-  { trait_type: "Phase 1", value: "1x-2x: Sell back initial investment. Natural taper from ~100% to 50%" },
-  { trait_type: "Phase 2", value: "2x-5x: Compressed growth 50% to 62.5%. Half rate between milestones" },
-  { trait_type: "Phase 3", value: "5x-10x: Compressed growth 62.5% to 75%" },
-  { trait_type: "Phase 4", value: "10x-15x: Compressed growth 75% to 100%" },
+  { trait_type: "Phase 1", value: "1x-2x: Sell back initial investment. Natural taper from ~100% to ~50%" },
+  { trait_type: "Phase 2", value: "2x-5x: Compressed growth 50% to ~56.25%. Cliff jump to 62.5% at 5x" },
+  { trait_type: "Phase 3", value: "5x-10x: Compressed growth 62.5% to ~68.75%. Cliff jump to 75% at 10x" },
+  { trait_type: "Phase 4", value: "10x-15x: Compressed growth 75% to ~87.5%. Cliff jump to 100% at 15x" },
   { trait_type: "Phase 5", value: "15x+: 100% unlocked. No restrictions" },
   { trait_type: "Underwater Rule", value: "At or below entry price = always 100% sellable" },
   { trait_type: "Program", value: "Token-2022 Transfer Hook" },

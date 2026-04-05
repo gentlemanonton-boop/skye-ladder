@@ -26,19 +26,19 @@ Milestone-based unlocking with **compressed growth (-50%) between milestones**. 
 - **Anyone at or below entry price can ALWAYS sell 100%**
 
 ### Phase 2: 2x → 5x (Compressed Growth)
-- Milestone values: 50% at 2x, 62.5% at 5x
+- Compressed range: 50% at 2x → ~56.25% at 4.99x
 - Between: `sellable = 0.50 + ((mult - 2) / 3 × 0.125 × 0.5)`
 - Growth is HALVED between milestones
 - At 3.5x: ~53.1% (not 56.25% like full linear)
 - **Cliff jump to 62.5% when 5x is reached**
 
 ### Phase 3: 5x → 10x (Compressed Growth)
-- Milestone values: 62.5% at 5x, 75% at 10x
+- Compressed range: 62.5% at 5x → ~68.75% at 9.99x
 - Between: `sellable = 0.625 + ((mult - 5) / 5 × 0.125 × 0.5)`
 - **Cliff jump to 75% when 10x is reached**
 
 ### Phase 4: 10x → 15x (Compressed Growth)
-- Milestone values: 75% at 10x, 100% at 15x
+- Compressed range: 75% at 10x → ~87.5% at 14.99x
 - Between: `sellable = 0.75 + ((mult - 10) / 5 × 0.25 × 0.5)`
 - **Cliff jump to 100% when 15x is reached**
 

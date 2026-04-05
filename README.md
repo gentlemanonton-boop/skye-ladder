@@ -11,10 +11,10 @@ Every buy creates an independent position with an entry price. The transfer hook
 | Phase | Multiplier | Sellable % | Rule |
 |---|---|---|---|
 | Underwater | ≤ 1x | 100% | Always exit at or below entry. No one is ever trapped. |
-| Phase 1 | 1x – 2x | ~100% → 50% | Sell back your initial SOL investment. Natural taper. |
-| Phase 2 | 2x – 5x | 50% → 62.5% | Compressed growth (half rate). Cliff jump at 5x. |
-| Phase 3 | 5x – 10x | 62.5% → 75% | Compressed growth. Cliff jump at 10x. |
-| Phase 4 | 10x – 15x | 75% → 100% | Compressed growth. Full unlock at 15x. |
+| Phase 1 | 1x – 2x | ~100% → ~50% | Sell back your initial SOL investment. Natural taper. |
+| Phase 2 | 2x – 5x | 50% → ~56.25% | Compressed growth (half rate). Cliff jump to 62.5% at 5x. |
+| Phase 3 | 5x – 10x | 62.5% → ~68.75% | Compressed growth (half rate). Cliff jump to 75% at 10x. |
+| Phase 4 | 10x – 15x | 75% → ~87.5% | Compressed growth (half rate). Cliff jump to 100% at 15x. |
 | Phase 5 | 15x+ | 100% | Fully unlocked. No restrictions. |
 
 Sell limits are calculated from the **original** position balance, not the remaining balance. Repeated small sells cannot drain a position beyond its unlock percentage.
