@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { NATIVE_MINT } from "@solana/spl-token";
+import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { NATIVE_MINT, getMint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useSwap } from "../hooks/useSwap";
 import { useBalances, type TokenBalance } from "../hooks/useBalances";
@@ -458,8 +458,11 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
   onClose: () => void;
   side: "pay" | "receive";
 }) {
+  const { connection } = useConnection();
   const [search, setSearch] = useState("");
   const [showDust, setShowDust] = useState(false);
+  const [pastedToken, setPastedToken] = useState<SelectedToken | null>(null);
+  const [loadingMint, setLoadingMint] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -471,6 +474,44 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [onClose]);
+
+  // Detect if search is a valid mint address and fetch its info
+  useEffect(() => {
+    setPastedToken(null);
+    if (!search || search.length < 32 || search.length > 44) return;
+    try {
+      new PublicKey(search); // validate base58
+    } catch { return; }
+
+    // Check if it's already in our token list
+    const existing = allTokens.find(t => t.mint === search);
+    if (existing) return; // already shown in filtered list
+
+    setLoadingMint(true);
+    (async () => {
+      try {
+        // Try SPL Token first, then Token-2022
+        let decimals = 9;
+        try {
+          const mint = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_PROGRAM_ID);
+          decimals = mint.decimals;
+        } catch {
+          try {
+            const mint = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_2022_PROGRAM_ID);
+            decimals = mint.decimals;
+          } catch { /* use default 9 */ }
+        }
+        setPastedToken({
+          mint: search,
+          symbol: search.slice(0, 4) + "...",
+          name: search.slice(0, 6) + "..." + search.slice(-4),
+          logo: "",
+          decimals,
+        });
+      } catch {}
+      setLoadingMint(false);
+    })();
+  }, [search, connection, allTokens]);
 
   const solUsdVal = (solBalance ?? 0) * solUsd;
   const dustCount = allTokens.filter(t => !t.logo).length;
@@ -494,9 +535,30 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
           <h3 className="text-[14px] font-bold text-ink-primary">Select token</h3>
           <button onClick={onClose} className="text-ink-faint hover:text-ink-primary text-[18px]">&times;</button>
         </div>
-        <input ref={inputRef} type="text" placeholder="Search by name or address..."
+        <input ref={inputRef} type="text" placeholder="Search or paste contract address..."
           value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full bg-white/5 rounded-xl px-3 py-2.5 text-[13px] outline-none placeholder:text-ink-faint border border-white/5 focus:border-skye-500/30" />
+
+        {/* Pasted CA result */}
+        {loadingMint && (
+          <div className="mt-2 px-3 py-2 text-[12px] text-ink-faint animate-pulse">Looking up mint...</div>
+        )}
+        {pastedToken && (
+          <button onClick={() => selectToken(pastedToken.mint, pastedToken.symbol, pastedToken.name, pastedToken.logo, pastedToken.decimals)}
+            className="mt-2 w-full flex items-center justify-between px-3 py-3 rounded-xl bg-skye-500/10 border border-skye-500/20 hover:bg-skye-500/20 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-ink-tertiary">?</div>
+              <div className="text-left">
+                <div className="text-[13px] font-semibold text-ink-primary">Unknown Token</div>
+                <div className="text-[11px] text-ink-faint font-mono">{pastedToken.mint.slice(0, 8)}...{pastedToken.mint.slice(-6)}</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[11px] text-ink-faint">{pastedToken.decimals} decimals</div>
+              <div className="text-[11px] text-skye-400 font-semibold">Select</div>
+            </div>
+          </button>
+        )}
 
         {/* Common tokens quick select */}
         <div className="flex gap-2 mt-3">
