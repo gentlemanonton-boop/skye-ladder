@@ -80,9 +80,8 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
   const isCurveSell = route === "curve_sell";
   const maxSellableRaw = getTotalSellable(positions, currentPrice);
   const skyeBalanceRaw = skyeBalance !== null ? skyeBalance * 10 ** DECIMALS : 0;
-  // Use position-calculated sellable, capped at wallet balance
-  // If no valid positions, fall back to wallet balance (on-chain hook enforces the real limit)
-  const cappedSellableRaw = maxSellableRaw > 0 ? Math.min(maxSellableRaw, skyeBalanceRaw) : skyeBalanceRaw;
+  // Sellable = position-calculated amount, capped at wallet balance. Never exceeds either.
+  const cappedSellableRaw = Math.min(maxSellableRaw, skyeBalanceRaw);
   const maxSellableHuman = rawToHuman(cappedSellableRaw);
   const totalHeld = positions.reduce((s, p) => s + p.tokenBalance, 0);
   const hasPositions = positions.length > 0 && totalHeld > 0;
@@ -210,9 +209,13 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
     if (payToken.mint === NATIVE_MINT.toBase58()) {
       setAmount((bal * 0.95).toFixed(4)); // leave gas
     } else if (payToken.mint === SKYE_MINT.toBase58()) {
-      setAmount((maxSellableHuman).toString());
+      // Use position-calculated sellable — on-chain hook enforces the real limit
+      if (maxSellableHuman > 0) {
+        setAmount(Math.floor(maxSellableHuman).toString());
+      }
+      // If 0, don't fill — positions might not be loaded yet
     } else {
-      // Floor down slightly to avoid rounding above actual balance
+      // Other tokens: floor down to avoid exceeding balance
       const dp = payToken.decimals > 6 ? 4 : 2;
       const floored = Math.floor(bal * 10 ** dp) / 10 ** dp;
       setAmount(floored.toFixed(dp));

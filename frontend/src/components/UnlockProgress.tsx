@@ -64,13 +64,13 @@ export function UnlockProgress({ positions, currentPrice }: Props) {
     ? enriched.reduce((b, p) => (p.tokenBalance > b.tokenBalance ? p : b), enriched[0])
     : null;
 
-  const mult = primary?.multiplier ?? 1.0;
+  const mult = primary?.multiplier ?? 0;
   const fillPct = multToPercent(mult);
-  const effectiveBps = primary?.effectiveBps ?? 10000;
+  const effectiveBps = primary?.effectiveBps ?? 0;
 
-  // Sellable = min(calculated from positions, wallet balance)
+  // Sellable from valid positions, capped at wallet balance
   const totalSellableFromPositions = enriched.reduce((s, p) => s + p.sellableTokens, 0);
-  const totalSellable = Math.min(totalSellableFromPositions, heldRaw);
+  const totalSellable = hasValidPositions ? Math.min(totalSellableFromPositions, heldRaw) : 0;
 
   return (
     <div className="glass overflow-hidden">
