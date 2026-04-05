@@ -65,6 +65,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
 
   // Jupiter quote state
   const [jupQuote, setJupQuote] = useState<JupiterQuote | null>(null);
+  const [quoteDecimals, setQuoteDecimals] = useState(9); // verified decimals for current quote
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [jupPending, setJupPending] = useState(false);
   const [jupError, setJupError] = useState<string | null>(null);
@@ -109,7 +110,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
       priceImpactPct = ((effectivePrice - spotPrice) / spotPrice) * 100;
     } else if (jupQuote) {
       outputRaw = parseInt(jupQuote.outAmount);
-      outputHuman = outputRaw / 10 ** receiveToken.decimals;
+      outputHuman = outputRaw / 10 ** quoteDecimals;
       priceImpactPct = parseFloat(jupQuote.priceImpactPct) * 100;
     }
   }
@@ -119,12 +120,23 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
     if (amountNum <= 0 || isCurveBuy || isCurveSell || !pool) {
       setJupQuote(null);
       setRouteLabel("");
+      if (isCurveBuy) setQuoteDecimals(DECIMALS);
+      if (isCurveSell) setQuoteDecimals(9); // SOL
       return;
     }
 
     setQuoteLoading(true);
     const timer = setTimeout(async () => {
       try {
+        // Verify receive token decimals from on-chain
+        let verifiedDec = receiveToken.decimals;
+        if (!COMMON_TOKENS.find(t => t.mint === receiveToken.mint)) {
+          try {
+            const info = await connection.getAccountInfo(new PublicKey(receiveToken.mint));
+            if (info && info.data.length >= 45) verifiedDec = info.data[44];
+          } catch {}
+        }
+        setQuoteDecimals(verifiedDec);
         if (route === "jup_then_curve") {
           // X → SOL via Jupiter, then SOL → SKYE via curve
           const rawIn = Math.floor(amountNum * 10 ** payToken.decimals);
