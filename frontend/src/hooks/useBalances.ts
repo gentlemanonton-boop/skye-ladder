@@ -59,7 +59,7 @@ const SKYE_META = {
   symbol: "SKYE",
   name: "Skye",
   decimals: DECIMALS,
-  logoURI: "https://gateway.irys.xyz/YkvolVl__ug43pWw3H-cYF2vLN_zE_1LRt6FjcYmkcc",
+  logoURI: "/logo.jpeg",
 };
 
 export function useBalances() {

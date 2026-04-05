@@ -11,7 +11,7 @@ import { getJupiterQuote, executeJupiterSwap, type JupiterQuote } from "../lib/j
 import type { PoolState } from "../hooks/usePool";
 import type { Position } from "../lib/unlock";
 
-const SKYE_LOGO = "https://gateway.irys.xyz/YkvolVl__ug43pWw3H-cYF2vLN_zE_1LRt6FjcYmkcc";
+const SKYE_LOGO = "/logo.jpeg";
 const SOL_LOGO = "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png";
 const USDC_LOGO = "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png";
 const USDT_LOGO = "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png";

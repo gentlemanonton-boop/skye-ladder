@@ -16,7 +16,7 @@ import { TradeFlash } from "./components/TradeFlash";
 import { LaunchTab } from "./components/LaunchTab";
 import { DiscoverTab } from "./components/DiscoverTab";
 
-const LOGO = "https://gateway.irys.xyz/YkvolVl__ug43pWw3H-cYF2vLN_zE_1LRt6FjcYmkcc";
+const LOGO = "/logo.jpeg";
 type Tab = "trade" | "chart" | "launch" | "discover" | "about";
 
 class SafeChart extends React.Component<{}, { err: boolean }> {
