@@ -94,7 +94,7 @@ export function FloatingCoins() {
   }, []);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none z-[5] overflow-hidden">
       {coins.map((coin, i) => {
         const y = 100 - coin.baseY - coin.offsetY; // invert: high MC = high on screen
         return (
