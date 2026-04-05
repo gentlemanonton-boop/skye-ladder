@@ -545,17 +545,14 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
     });
 
   async function selectToken(mint: string, symbol: string, name: string, logo: string, decimals: number) {
-    // For unknown tokens (no logo), verify decimals on-chain
-    if (!logo && !COMMON_TOKENS.find(t => t.mint === mint)) {
+    // Always verify decimals on-chain for non-hardcoded tokens
+    if (!COMMON_TOKENS.find(t => t.mint === mint)) {
       try {
-        const mintInfo = await getMint(connection, new PublicKey(mint), "confirmed", TOKEN_PROGRAM_ID);
-        decimals = mintInfo.decimals;
-      } catch {
-        try {
-          const mintInfo = await getMint(connection, new PublicKey(mint), "confirmed", TOKEN_2022_PROGRAM_ID);
-          decimals = mintInfo.decimals;
-        } catch {}
-      }
+        const info = await connection.getAccountInfo(new PublicKey(mint));
+        if (info && info.data.length >= 45) {
+          decimals = info.data[44];
+        }
+      } catch {}
     }
     onSelect({ mint, symbol, name, logo, decimals });
   }
