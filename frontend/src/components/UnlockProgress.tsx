@@ -47,30 +47,29 @@ export function UnlockProgress({ positions, currentPrice }: Props) {
   if (!publicKey) return null;
   if (currentPrice === 0) return null;
 
-  // Get valid (non-corrupt) enriched positions
+  // Enrich all positions (corrupt ones get sanitized to underwater)
   const enriched = positions
     .filter(p => p.tokenBalance > 0)
-    .map(p => enrichPosition(p, currentPrice))
-    .filter(p => p.phase !== "Corrupt");
+    .map(p => enrichPosition(p, currentPrice));
 
-  // Use wallet balance as source of truth for held amount
   const heldHuman = skyeBalance ?? 0;
   const heldRaw = heldHuman * 10 ** DECIMALS;
   if (heldHuman <= 0 && enriched.length === 0) return null;
 
-  // If we have valid positions, use their data. Otherwise show balance only.
-  const hasValidPositions = enriched.length > 0;
-  const primary = hasValidPositions
-    ? enriched.reduce((b, p) => (p.tokenBalance > b.tokenBalance ? p : b), enriched[0])
-    : null;
+  // Primary = highest non-underwater position (shows real progress on the bar)
+  // If all underwater, use the first one
+  const nonUnderwater = enriched.filter(p => p.multiplier > 1.01);
+  const primary = nonUnderwater.length > 0
+    ? nonUnderwater.reduce((b, p) => (p.multiplier > b.multiplier ? p : b), nonUnderwater[0])
+    : enriched.length > 0 ? enriched[0] : null;
 
   const mult = primary?.multiplier ?? 0;
   const fillPct = multToPercent(mult);
   const effectiveBps = primary?.effectiveBps ?? 0;
 
-  // Sellable from valid positions, capped at wallet balance
+  // Total sellable from ALL positions (including sanitized), capped at wallet balance
   const totalSellableFromPositions = enriched.reduce((s, p) => s + p.sellableTokens, 0);
-  const totalSellable = hasValidPositions ? Math.min(totalSellableFromPositions, heldRaw) : 0;
+  const totalSellable = enriched.length > 0 ? Math.min(totalSellableFromPositions, heldRaw) : 0;
 
   return (
     <div className="glass overflow-hidden">
