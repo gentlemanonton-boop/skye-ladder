@@ -21,6 +21,10 @@ export function TradeFlash() {
     if (latest.signature === lastSeen) return;
     setLastSeen(latest.signature);
 
+    // Only flash trades from the last 30 seconds — skip stale trades on page load
+    const age = Math.floor(Date.now() / 1000) - latest.timestamp;
+    if (age > 30) return;
+
     if (latest.type === "buy") {
       const sol = (latest.solAmount / 1e9).toFixed(3);
       setFlashes(prev => [...prev, { id: ++flashId, type: "buy", amount: sol + " SOL" }]);
