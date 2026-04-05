@@ -15,9 +15,10 @@ import { AboutTab } from "./components/AboutTab";
 import { TradeFlash } from "./components/TradeFlash";
 import { LaunchTab } from "./components/LaunchTab";
 import { DiscoverTab } from "./components/DiscoverTab";
+import { WorldTab } from "./components/WorldTab";
 
 const LOGO = "/logo.jpeg";
-type Tab = "trade" | "chart" | "launch" | "discover" | "about";
+type Tab = "trade" | "chart" | "world" | "launch" | "discover" | "about";
 
 class SafeChart extends React.Component<{}, { err: boolean }> {
   state = { err: false };
@@ -88,6 +89,7 @@ export default function App() {
           {([
             { id: "trade" as Tab, label: "Trade" },
             { id: "chart" as Tab, label: "Chart" },
+            { id: "world" as Tab, label: "World" },
             { id: "launch" as Tab, label: "Launch" },
             { id: "discover" as Tab, label: "Discover" },
             { id: "about" as Tab, label: "About" },
@@ -104,7 +106,7 @@ export default function App() {
       </div>
 
       {/* Content */}
-      <main className={`mx-auto px-4 sm:px-5 pt-6 sm:pt-8 pb-16 space-y-5 sm:space-y-6 ${tab === "discover" ? "max-w-5xl" : "max-w-2xl"}`}>
+      <main className={`mx-auto px-4 sm:px-5 pt-6 sm:pt-8 pb-16 space-y-5 sm:space-y-6 ${tab === "discover" || tab === "world" ? "max-w-5xl" : "max-w-2xl"}`}>
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="text-ink-tertiary text-[14px]">Loading pool...</div>
@@ -125,6 +127,7 @@ export default function App() {
               </>
             )}
             {tab === "chart" && <SafeChart><ChartTab /></SafeChart>}
+            {tab === "world" && <WorldTab />}
             {tab === "launch" && <LaunchTab />}
             {tab === "discover" && <DiscoverTab />}
             {tab === "about" && <AboutTab />}
