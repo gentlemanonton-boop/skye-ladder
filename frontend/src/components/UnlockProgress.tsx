@@ -2,6 +2,7 @@ import { useState } from "react";
 import { enrichPosition, type Position } from "../lib/unlock";
 import { formatPercent, formatTokens } from "../lib/format";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { DECIMALS } from "../constants";
 
 interface Props {
   positions: Position[];
