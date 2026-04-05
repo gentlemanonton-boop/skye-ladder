@@ -78,7 +78,7 @@ export function ChartTab() {
       <div className="glass rounded-b-none p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div>
-            <span className="font-pixel text-[12px] sm:text-[14px] text-ink-primary">{price.toExponential(4)}</span>
+            <span className="font-pixel text-[12px] sm:text-[14px] text-ink-primary">{price.toFixed(12).replace(/0+$/, "0")}</span>
             <span className="text-[11px] text-ink-faint ml-2">SOL</span>
             <span className="text-[11px] text-ink-faint ml-1">({formatUsd(price * solUsd, 6)})</span>
           </div>
@@ -86,8 +86,8 @@ export function ChartTab() {
             {up ? "+" : ""}{chg.toFixed(2)}%
           </span>
           <div className="hidden sm:flex items-center gap-4 text-ink-faint ml-auto">
-            <span className="font-pixel text-[8px]">H <span className="text-ink-tertiary">{hi.toExponential(3)}</span></span>
-            <span className="font-pixel text-[8px]">L <span className="text-ink-tertiary">{lo.toExponential(3)}</span></span>
+            <span className="font-pixel text-[8px]">H <span className="text-ink-tertiary">{hi.toFixed(10).replace(/0+$/, "0")}</span></span>
+            <span className="font-pixel text-[8px]">L <span className="text-ink-tertiary">{lo.toFixed(10).replace(/0+$/, "0")}</span></span>
           </div>
         </div>
 
