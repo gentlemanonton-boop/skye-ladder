@@ -310,7 +310,11 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
             <span className="text-[12px] text-ink-tertiary">You pay</span>
             {publicKey && payBal !== null && (
               <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-ink-faint">{payBal < 1000 ? payBal.toFixed(4) : payBal.toLocaleString(undefined, {maximumFractionDigits: 2})} {payToken.symbol}</span>
+                {payToken.mint === SKYE_MINT.toBase58() ? (
+                  <span className="text-ink-faint">{maxSellableHuman > 0 ? Math.floor(maxSellableHuman).toLocaleString() : "0"} sellable</span>
+                ) : (
+                  <span className="text-ink-faint">{payBal < 1000 ? payBal.toFixed(4) : payBal.toLocaleString(undefined, {maximumFractionDigits: 2})} {payToken.symbol}</span>
+                )}
                 <button onClick={handleMax} className="text-skye-400 font-semibold hover:underline text-[11px]">MAX</button>
               </div>
             )}
