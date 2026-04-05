@@ -122,7 +122,7 @@ export default function App() {
             {tab === "trade" && (
               <>
                 <SwapPanel currentPrice={currentPrice} solUsd={solUsd} pool={pool} positions={positions} solBalance={solBalance} skyeBalance={skyeBalance} />
-                <UnlockProgress positions={positions} currentPrice={currentPrice} />
+                <UnlockProgress positions={positions} currentPrice={currentPrice} skyeBalance={skyeBalance} />
                 <TierBreakdown positions={positions} currentPrice={currentPrice} />
               </>
             )}

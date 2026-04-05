@@ -2,12 +2,11 @@ import { useState } from "react";
 import { enrichPosition, type Position } from "../lib/unlock";
 import { formatPercent, formatTokens } from "../lib/format";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useBalances } from "../hooks/useBalances";
-import { DECIMALS } from "../constants";
 
 interface Props {
   positions: Position[];
   currentPrice: number;
+  skyeBalance: number | null;
 }
 
 const MILESTONES = [
@@ -40,9 +39,8 @@ function phaseLabel(mult: number): string {
   return "Phase 5";
 }
 
-export function UnlockProgress({ positions, currentPrice }: Props) {
+export function UnlockProgress({ positions, currentPrice, skyeBalance }: Props) {
   const { publicKey } = useWallet();
-  const { skyeBalance } = useBalances();
   const [collapsed, setCollapsed] = useState(true);
   if (!publicKey) return null;
   if (currentPrice === 0) return null;

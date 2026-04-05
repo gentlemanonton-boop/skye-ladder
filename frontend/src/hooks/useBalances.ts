@@ -143,23 +143,20 @@ export function useBalances() {
       collectAccounts(t22Accounts.value as any, true);
     } catch {}
 
-    // Batch-fetch mint accounts to get real decimals
+    // Batch-fetch mint accounts to get real decimals (max 20 to avoid RPC timeout)
     const unknownMints = rawTokens
       .filter(t => !HARDCODED[t.mint])
       .map(t => t.mint);
     const mintDecimals: Record<string, number> = {};
     if (unknownMints.length > 0) {
       try {
-        const uniqueMints = [...new Set(unknownMints)];
-        // Batch in groups of 100
-        for (let i = 0; i < uniqueMints.length; i += 100) {
-          const batch = uniqueMints.slice(i, i + 100).map(m => new PublicKey(m));
-          const infos = await connection.getMultipleAccountsInfo(batch);
-          for (let j = 0; j < batch.length; j++) {
-            const info = infos[j];
-            if (info && info.data.length >= 45) {
-              mintDecimals[batch[j].toBase58()] = info.data[44];
-            }
+        const uniqueMints = [...new Set(unknownMints)].slice(0, 20);
+        const batch = uniqueMints.map(m => new PublicKey(m));
+        const infos = await connection.getMultipleAccountsInfo(batch);
+        for (let j = 0; j < batch.length; j++) {
+          const info = infos[j];
+          if (info && info.data.length >= 45) {
+            mintDecimals[batch[j].toBase58()] = info.data[44];
           }
         }
       } catch {}
