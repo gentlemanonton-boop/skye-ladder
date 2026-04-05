@@ -288,11 +288,8 @@ export function DiscoverTab() {
 
   return (
     <div className="space-y-6">
-      <div className="glass p-6 text-center space-y-3">
+      <div className="glass p-4 text-center">
         <h2 className="font-pixel text-[14px] sm:text-[16px] text-skye-400 tracking-wide">DISCOVER</h2>
-        <p className="text-[14px] text-ink-secondary max-w-sm mx-auto">
-          Tokens launched on Skye — every one has built-in sell restrictions.
-        </p>
       </div>
 
       <div className="space-y-3">
