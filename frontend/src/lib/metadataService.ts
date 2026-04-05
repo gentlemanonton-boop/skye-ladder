@@ -1,0 +1,83 @@
+/**
+ * metadataService.ts — Upload metadata to Arweave + create Metaplex metadata account.
+ *
+ * Uses dynamic imports to avoid bundling Node.js-only dependencies (@irys/query)
+ * at build time, which would break Vite's browser build.
+ */
+
+import type { WalletAdapter } from "@solana/wallet-adapter-base";
+import { RPC_URL } from "../constants";
+
+const SKYE_LADDER_ATTRIBUTES = [
+  { trait_type: "Phase 1", value: "1x-2x: Sell back initial investment. Natural taper from ~100% to 50%" },
+  { trait_type: "Phase 2", value: "2x-5x: Compressed growth 50% to 62.5%. Half rate between milestones" },
+  { trait_type: "Phase 3", value: "5x-10x: Compressed growth 62.5% to 75%" },
+  { trait_type: "Phase 4", value: "10x-15x: Compressed growth 75% to 100%" },
+  { trait_type: "Phase 5", value: "15x+: 100% unlocked. No restrictions" },
+  { trait_type: "Underwater Rule", value: "At or below entry price = always 100% sellable" },
+  { trait_type: "Program", value: "Token-2022 Transfer Hook" },
+];
+
+export async function uploadAndCreateMetadata(opts: {
+  wallet: WalletAdapter;
+  mint: string;
+  name: string;
+  symbol: string;
+  description: string;
+  imageFile: File | null;
+}): Promise<string> {
+  // Dynamic imports to avoid Node.js stream dependency at build time
+  const { createUmi } = await import("@metaplex-foundation/umi-bundle-defaults");
+  const { mplTokenMetadata, createV1, TokenStandard } = await import("@metaplex-foundation/mpl-token-metadata");
+  const { walletAdapterIdentity } = await import("@metaplex-foundation/umi-signer-wallet-adapters");
+  const { irysUploader } = await import("@metaplex-foundation/umi-uploader-irys");
+  const { publicKey: umiPublicKey, createGenericFile } = await import("@metaplex-foundation/umi");
+
+  const umi = createUmi(RPC_URL)
+    .use(mplTokenMetadata())
+    .use(irysUploader())
+    .use(walletAdapterIdentity(opts.wallet));
+
+  let imageUri = "";
+  if (opts.imageFile) {
+    const imageBytes = new Uint8Array(await opts.imageFile.arrayBuffer());
+    const file = createGenericFile(imageBytes, opts.imageFile.name, {
+      contentType: opts.imageFile.type,
+    });
+    const [uploaded] = await umi.uploader.upload([file]);
+    imageUri = uploaded;
+  }
+
+  const baseDescription =
+    "Skye Ladder \u2014 Structured sell-restriction protocol on Solana. " +
+    "Token-2022 Transfer Hook enforces per-wallet sell limits that scale with price appreciation. " +
+    "Buys always unrestricted.";
+
+  const metadataJson = {
+    name: opts.name,
+    symbol: opts.symbol,
+    description: opts.description
+      ? `${opts.description}\n\n${baseDescription}`
+      : baseDescription,
+    image: imageUri,
+    attributes: SKYE_LADDER_ATTRIBUTES,
+    properties: { category: "currency" },
+  };
+
+  const metadataUri = await umi.uploader.uploadJson(metadataJson);
+
+  await createV1(umi, {
+    mint: umiPublicKey(opts.mint),
+    name: opts.name,
+    symbol: opts.symbol,
+    uri: metadataUri,
+    sellerFeeBasisPoints: {
+      basisPoints: 0n,
+      identifier: "%" as const,
+      decimals: 2,
+    },
+    tokenStandard: TokenStandard.Fungible,
+  }).sendAndConfirm(umi);
+
+  return metadataUri;
+}
