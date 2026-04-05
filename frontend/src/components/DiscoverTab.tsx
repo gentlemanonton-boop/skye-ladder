@@ -41,29 +41,6 @@ function computeCurveSell(vSol: number, vToken: number, tokensIn: number): numbe
   return Math.floor(raw - raw * 100 / 10000);
 }
 
-const MOCK_TOKENS: DiscoveredToken[] = [
-  { mint: "mock1", name: "Dragon Protocol", symbol: "DRGN", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 42_000_000_000, virtualSol: 72_000_000_000, virtualToken: 800_000_000_000_000_000, graduated: false },
-  { mint: "mock2", name: "Pixel Warriors", symbol: "PXLW", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 78_000_000_000, virtualSol: 108_000_000_000, virtualToken: 650_000_000_000_000_000, graduated: false },
-  { mint: "mock3", name: "Moon Cats", symbol: "MCAT", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 85_000_000_000, virtualSol: 115_000_000_000, virtualToken: 600_000_000_000_000_000, graduated: true },
-  { mint: "mock4", name: "Neon Samurai", symbol: "NEON", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 12_000_000_000, virtualSol: 42_000_000_000, virtualToken: 920_000_000_000_000_000, graduated: false },
-  { mint: "mock5", name: "Cloud Kingdom", symbol: "CLKD", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 3_500_000_000, virtualSol: 33_500_000_000, virtualToken: 970_000_000_000_000_000, graduated: false },
-  { mint: "mock6", name: "Void Runners", symbol: "VOID", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 67_000_000_000, virtualSol: 97_000_000_000, virtualToken: 700_000_000_000_000_000, graduated: false },
-  { mint: "mock7", name: "Solar Winds", symbol: "SOLW", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 25_000_000_000, virtualSol: 55_000_000_000, virtualToken: 850_000_000_000_000_000, graduated: false },
-  { mint: "mock8", name: "Crystal Forge", symbol: "CRFG", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 51_000_000_000, virtualSol: 81_000_000_000, virtualToken: 750_000_000_000_000_000, graduated: false },
-  { mint: "mock9", name: "Ember Chain", symbol: "EMBR", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 1_200_000_000, virtualSol: 31_200_000_000, virtualToken: 990_000_000_000_000_000, graduated: false },
-  { mint: "mock10", name: "Titan Shield", symbol: "TSLD", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 90_000_000_000, virtualSol: 120_000_000_000, virtualToken: 550_000_000_000_000_000, graduated: true },
-  { mint: "mock11", name: "Astro Doge", symbol: "ADOG", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 35_000_000_000, virtualSol: 65_000_000_000, virtualToken: 870_000_000_000_000_000, graduated: false },
-  { mint: "mock12", name: "Flux Protocol", symbol: "FLUX", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 58_000_000_000, virtualSol: 88_000_000_000, virtualToken: 720_000_000_000_000_000, graduated: false },
-  { mint: "mock13", name: "Ghost Network", symbol: "GHST", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 7_000_000_000, virtualSol: 37_000_000_000, virtualToken: 950_000_000_000_000_000, graduated: false },
-  { mint: "mock14", name: "Rune Masters", symbol: "RUNE", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 44_000_000_000, virtualSol: 74_000_000_000, virtualToken: 790_000_000_000_000_000, graduated: false },
-  { mint: "mock15", name: "Hyper Loop", symbol: "HYPE", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 72_000_000_000, virtualSol: 102_000_000_000, virtualToken: 680_000_000_000_000_000, graduated: false },
-  { mint: "mock16", name: "Zen Garden", symbol: "ZEN", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 15_000_000_000, virtualSol: 45_000_000_000, virtualToken: 910_000_000_000_000_000, graduated: false },
-  { mint: "mock17", name: "Thunder Bolt", symbol: "TBLT", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 82_000_000_000, virtualSol: 112_000_000_000, virtualToken: 620_000_000_000_000_000, graduated: false },
-  { mint: "mock18", name: "Shadow Realm", symbol: "SHDW", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 28_000_000_000, virtualSol: 58_000_000_000, virtualToken: 860_000_000_000_000_000, graduated: false },
-  { mint: "mock19", name: "Quantum Bits", symbol: "QBIT", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 63_000_000_000, virtualSol: 93_000_000_000, virtualToken: 710_000_000_000_000_000, graduated: false },
-  { mint: "mock20", name: "Cyber Punk", symbol: "CPNK", image: "", description: "", website: "", twitter: "", telegram: "", discord: "", curve: "", creator: "", launchedAt: 0, realSol: 5_000_000_000, virtualSol: 35_000_000_000, virtualToken: 960_000_000_000_000_000, graduated: false },
-];
-
 export function DiscoverTab() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
@@ -306,7 +283,7 @@ export function DiscoverTab() {
           </div>
         )}
 
-        {[...tokens, ...MOCK_TOKENS].map((t) => {
+        {tokens.map((t) => {
           const price = t.virtualToken > 0 ? t.virtualSol / t.virtualToken : 0;
           const mcSol = price * 1e9;
           const isTrading = trading === t.mint;
