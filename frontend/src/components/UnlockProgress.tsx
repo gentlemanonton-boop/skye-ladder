@@ -77,7 +77,7 @@ export function UnlockProgress({ positions, currentPrice, skyeBalance }: Props) 
       >
         <div className="flex items-center gap-3">
           <h2 className="text-[14px] sm:text-[15px] font-bold text-ink-primary">Unlock Progress</h2>
-          {hasValidPositions && (
+          {enriched.length > 0 && (
             <>
               <span className="text-[13px] font-semibold text-skye-400 tabular-nums">{mult.toFixed(2)}x</span>
               <span className="text-[12px] text-ink-tertiary">{phaseLabel(mult)}</span>
