@@ -487,29 +487,29 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
       new PublicKey(search); // validate base58
     } catch { return; }
 
-    // Check if it's already in our token list
+    // Check if it's already in our token list with good metadata
     const existing = allTokens.find(t => t.mint === search);
-    if (existing) return; // already shown in filtered list
+    if (existing && existing.logo) return; // already shown with good data
 
     setLoadingMint(true);
     (async () => {
       try {
         // Fetch decimals from on-chain
-        let decimals = 9;
+        let decimals = existing?.decimals ?? 9;
         try {
-          const mint = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_PROGRAM_ID);
-          decimals = mint.decimals;
+          const mintInfo = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_PROGRAM_ID);
+          decimals = mintInfo.decimals;
         } catch {
           try {
-            const mint = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_2022_PROGRAM_ID);
-            decimals = mint.decimals;
-          } catch { /* use default 9 */ }
+            const mintInfo = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_2022_PROGRAM_ID);
+            decimals = mintInfo.decimals;
+          } catch { /* use existing or default */ }
         }
 
         // Fetch name, symbol, logo from DexScreener
-        let symbol = search.slice(0, 4) + "...";
-        let name = "Unknown Token";
-        let logo = "";
+        let symbol = existing?.symbol || search.slice(0, 4) + "...";
+        let name = existing?.name || "Unknown Token";
+        let logo = existing?.logo || "";
         try {
           const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${search}`);
           if (res.ok) {
@@ -520,7 +520,7 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
                 symbol = base.symbol || symbol;
                 name = base.name || name;
               }
-              logo = data[0].info?.imageUrl || "";
+              logo = data[0].info?.imageUrl || logo;
             }
           }
         } catch {}
@@ -542,7 +542,19 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
       return t.symbol.toLowerCase().includes(q) || t.name.toLowerCase().includes(q) || t.mint.toLowerCase().includes(q);
     });
 
-  function selectToken(mint: string, symbol: string, name: string, logo: string, decimals: number) {
+  async function selectToken(mint: string, symbol: string, name: string, logo: string, decimals: number) {
+    // For unknown tokens (no logo), verify decimals on-chain
+    if (!logo && !COMMON_TOKENS.find(t => t.mint === mint)) {
+      try {
+        const mintInfo = await getMint(connection, new PublicKey(mint), "confirmed", TOKEN_PROGRAM_ID);
+        decimals = mintInfo.decimals;
+      } catch {
+        try {
+          const mintInfo = await getMint(connection, new PublicKey(mint), "confirmed", TOKEN_2022_PROGRAM_ID);
+          decimals = mintInfo.decimals;
+        } catch {}
+      }
+    }
     onSelect({ mint, symbol, name, logo, decimals });
   }
 
