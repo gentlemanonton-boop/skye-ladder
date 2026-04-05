@@ -2,6 +2,8 @@ import { useState } from "react";
 import { enrichPosition, type Position } from "../lib/unlock";
 import { formatPercent, formatTokens } from "../lib/format";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useBalances } from "../hooks/useBalances";
+import { DECIMALS } from "../constants";
 
 interface Props {
   positions: Position[];
@@ -40,20 +42,35 @@ function phaseLabel(mult: number): string {
 
 export function UnlockProgress({ positions, currentPrice }: Props) {
   const { publicKey } = useWallet();
+  const { skyeBalance } = useBalances();
   const [collapsed, setCollapsed] = useState(true);
   if (!publicKey) return null;
-
-  const activePositions = positions.filter(p => p.tokenBalance > 0);
-
-  if (activePositions.length === 0) return null;
   if (currentPrice === 0) return null;
 
-  const enriched = activePositions.map((p) => enrichPosition(p, currentPrice)).filter(p => p.phase !== "Corrupt");
-  if (enriched.length === 0) return null;
-  const primary = enriched.reduce((b, p) => (p.tokenBalance > b.tokenBalance ? p : b), enriched[0]);
-  const fillPct = multToPercent(primary.multiplier);
-  const totalSellable = enriched.reduce((s, p) => s + p.sellableTokens, 0);
-  const totalBalance = enriched.reduce((s, p) => s + p.tokenBalance, 0);
+  // Get valid (non-corrupt) enriched positions
+  const enriched = positions
+    .filter(p => p.tokenBalance > 0)
+    .map(p => enrichPosition(p, currentPrice))
+    .filter(p => p.phase !== "Corrupt");
+
+  // Use wallet balance as source of truth for held amount
+  const heldHuman = skyeBalance ?? 0;
+  const heldRaw = heldHuman * 10 ** DECIMALS;
+  if (heldHuman <= 0 && enriched.length === 0) return null;
+
+  // If we have valid positions, use their data. Otherwise show balance only.
+  const hasValidPositions = enriched.length > 0;
+  const primary = hasValidPositions
+    ? enriched.reduce((b, p) => (p.tokenBalance > b.tokenBalance ? p : b), enriched[0])
+    : null;
+
+  const mult = primary?.multiplier ?? 1.0;
+  const fillPct = multToPercent(mult);
+  const effectiveBps = primary?.effectiveBps ?? 10000;
+
+  // Sellable = min(calculated from positions, wallet balance)
+  const totalSellableFromPositions = enriched.reduce((s, p) => s + p.sellableTokens, 0);
+  const totalSellable = Math.min(totalSellableFromPositions, heldRaw);
 
   return (
     <div className="glass overflow-hidden">
@@ -63,8 +80,12 @@ export function UnlockProgress({ positions, currentPrice }: Props) {
       >
         <div className="flex items-center gap-3">
           <h2 className="text-[14px] sm:text-[15px] font-bold text-ink-primary">Unlock Progress</h2>
-          <span className="text-[13px] font-semibold text-skye-400 tabular-nums">{primary.multiplier.toFixed(2)}x</span>
-          <span className="text-[12px] text-ink-tertiary">{phaseLabel(primary.multiplier)}</span>
+          {hasValidPositions && (
+            <>
+              <span className="text-[13px] font-semibold text-skye-400 tabular-nums">{mult.toFixed(2)}x</span>
+              <span className="text-[12px] text-ink-tertiary">{phaseLabel(mult)}</span>
+            </>
+          )}
         </div>
         <svg className={`w-4 h-4 text-ink-faint transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -74,10 +95,11 @@ export function UnlockProgress({ positions, currentPrice }: Props) {
       <div className={`transition-all duration-300 ease-out overflow-hidden ${collapsed ? "max-h-0" : "max-h-[400px]"}`}>
         <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-3">
           <div className="flex items-baseline justify-between text-[13px]">
-            <span className="text-ink-secondary">{formatPercent(primary.effectiveBps)} unlocked</span>
-            <span className="font-semibold text-skye-400">{formatTokens(totalSellable, 0)} available</span>
+            <span className="text-ink-secondary">{formatPercent(effectiveBps)} unlocked</span>
+            <span className="font-semibold text-skye-400">{formatTokens(totalSellable, 0)} sellable</span>
           </div>
 
+          {/* Progress bar */}
           <div className="relative">
             <div className="h-3 bg-white/5 rounded-full overflow-hidden">
               <div
@@ -103,9 +125,25 @@ export function UnlockProgress({ positions, currentPrice }: Props) {
           </div>
 
           <div className="flex justify-between text-[13px] pt-3 border-t border-white/5">
-            <span className="text-ink-secondary">{formatTokens(totalBalance, 0)} SKYE held</span>
+            <span className="text-ink-secondary">{heldHuman.toLocaleString(undefined, {maximumFractionDigits: 0})} SKYE held</span>
             <span className="font-semibold text-skye-400">{formatTokens(totalSellable, 0)} sellable</span>
           </div>
+
+          {/* Position breakdown */}
+          {enriched.length > 0 && (
+            <div className="space-y-1">
+              {enriched.map((pos, i) => (
+                <div key={i} className="flex items-center justify-between text-[11px] bg-white/3 rounded-lg px-3 py-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${pos.multiplier >= 15 ? "bg-emerald-400" : pos.multiplier >= 1 ? "bg-skye-400" : "bg-rose-400"}`} />
+                    <span className="text-ink-secondary tabular-nums">{pos.multiplier.toFixed(2)}x</span>
+                    <span className="text-ink-faint">{pos.phase}</span>
+                  </div>
+                  <span className="text-ink-tertiary tabular-nums">{formatTokens(pos.tokenBalance, 0)} ({(pos.effectiveBps / 100).toFixed(1)}%)</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -79,9 +79,10 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
   const isCurveBuy = route === "curve_buy";
   const isCurveSell = route === "curve_sell";
   const maxSellableRaw = getTotalSellable(positions, currentPrice);
-  // Cap sellable at actual wallet balance
   const skyeBalanceRaw = skyeBalance !== null ? skyeBalance * 10 ** DECIMALS : 0;
-  const cappedSellableRaw = Math.min(maxSellableRaw, skyeBalanceRaw);
+  // Use position-calculated sellable, capped at wallet balance
+  // If no valid positions, fall back to wallet balance (on-chain hook enforces the real limit)
+  const cappedSellableRaw = maxSellableRaw > 0 ? Math.min(maxSellableRaw, skyeBalanceRaw) : skyeBalanceRaw;
   const maxSellableHuman = rawToHuman(cappedSellableRaw);
   const totalHeld = positions.reduce((s, p) => s + p.tokenBalance, 0);
   const hasPositions = positions.length > 0 && totalHeld > 0;
