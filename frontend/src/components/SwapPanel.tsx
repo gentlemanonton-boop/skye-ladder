@@ -208,7 +208,10 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
     } else if (payToken.mint === SKYE_MINT.toBase58()) {
       setAmount((maxSellableHuman).toString());
     } else {
-      setAmount(bal.toFixed(payToken.decimals > 6 ? 4 : 2));
+      // Floor down slightly to avoid rounding above actual balance
+      const dp = payToken.decimals > 6 ? 4 : 2;
+      const floored = Math.floor(bal * 10 ** dp) / 10 ** dp;
+      setAmount(floored.toFixed(dp));
     }
   }
 
@@ -228,7 +231,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         setJupPending(true);
         // Step 1: Jupiter swap (X → SOL)
         const rawIn = Math.floor(amountNum * 10 ** payToken.decimals);
-        const jupQ = await getJupiterQuote(payToken.mint, NATIVE_MINT.toBase58(), rawIn, 300);
+        const jupQ = await getJupiterQuote(payToken.mint, NATIVE_MINT.toBase58(), rawIn, 500);
         if (!jupQ) throw new Error("Failed to get Jupiter quote");
         const sig1 = await executeJupiterSwap(jupQ, publicKey.toBase58(), connection, signTransaction!);
         setLastTx(sig1);
@@ -251,7 +254,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         setJupPending(true);
         // Re-fetch fresh quote right before executing to avoid stale slippage
         const rawIn = Math.floor(amountNum * 10 ** payToken.decimals);
-        const freshQuote = await getJupiterQuote(payToken.mint, receiveToken.mint, rawIn, 300);
+        const freshQuote = await getJupiterQuote(payToken.mint, receiveToken.mint, rawIn, 500);
         if (!freshQuote) throw new Error("Failed to get Jupiter quote");
         const sig = await executeJupiterSwap(freshQuote, publicKey.toBase58(), connection, signTransaction!);
         setLastTx(sig);
