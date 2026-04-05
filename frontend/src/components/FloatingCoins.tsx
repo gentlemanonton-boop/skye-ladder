@@ -62,9 +62,8 @@ export function FloatingCoins() {
       const baseY = mcToY(token.mc);
       // Bigger MC = slightly larger coin
       const mcRatio = Math.log10(token.mc) / Math.log10(500_000_000);
-      const size = 32 + mcRatio * 24;
-      // Lower MC = more transparent (ethereal)
-      const opacity = 0.15 + mcRatio * 0.35;
+      const size = 48 + mcRatio * 32;
+      const opacity = 0.4 + mcRatio * 0.4;
 
       return {
         token,
@@ -119,7 +118,7 @@ export function FloatingCoins() {
                 top: -coin.size / 2,
                 left: -coin.size / 2,
                 background: coin.token.color,
-                opacity: 0.15,
+                opacity: 0.3,
               }}
             />
             {/* Coin */}
@@ -128,22 +127,22 @@ export function FloatingCoins() {
               style={{
                 width: coin.size,
                 height: coin.size,
-                background: `radial-gradient(circle at 30% 30%, ${coin.token.color}40, ${coin.token.color}15)`,
-                boxShadow: `0 0 ${coin.size / 2}px ${coin.token.color}20`,
+                background: `radial-gradient(circle at 30% 30%, ${coin.token.color}70, ${coin.token.color}30)`,
+                boxShadow: `0 0 ${coin.size}px ${coin.token.color}40`,
               }}
             >
               {coin.token.logo ? (
-                <img src={coin.token.logo} alt={coin.token.symbol} className="w-full h-full rounded-full" style={{ opacity: 0.7 }} />
+                <img src={coin.token.logo} alt={coin.token.symbol} className="w-full h-full rounded-full" style={{ opacity: 0.9 }} />
               ) : (
-                <span className="text-white font-bold" style={{ fontSize: coin.size * 0.28, opacity: 0.6 }}>
+                <span className="text-white font-bold" style={{ fontSize: coin.size * 0.3, opacity: 0.85 }}>
                   {coin.token.symbol.slice(0, 2)}
                 </span>
               )}
             </div>
             {/* Label */}
-            <div className="absolute left-1/2 -translate-x-1/2 mt-1 text-center whitespace-nowrap" style={{ opacity: 0.5 }}>
-              <div className="text-white font-semibold" style={{ fontSize: 9 }}>{coin.token.symbol}</div>
-              <div className="text-white/60" style={{ fontSize: 8 }}>{formatMC(coin.token.mc)}</div>
+            <div className="absolute left-1/2 -translate-x-1/2 mt-1.5 text-center whitespace-nowrap" style={{ opacity: 0.75 }}>
+              <div className="text-white font-bold" style={{ fontSize: 10 }}>{coin.token.symbol}</div>
+              <div className="text-white/70 font-medium" style={{ fontSize: 9 }}>{formatMC(coin.token.mc)}</div>
             </div>
           </div>
         );
