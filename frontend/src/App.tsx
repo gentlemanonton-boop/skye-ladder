@@ -15,6 +15,7 @@ import { AboutTab } from "./components/AboutTab";
 import { TradeFlash } from "./components/TradeFlash";
 import { LaunchTab } from "./components/LaunchTab";
 import { DiscoverTab } from "./components/DiscoverTab";
+import { FloatingCoins } from "./components/FloatingCoins";
 
 const LOGO = "https://gateway.irys.xyz/YkvolVl__ug43pWw3H-cYF2vLN_zE_1LRt6FjcYmkcc";
 type Tab = "trade" | "chart" | "launch" | "discover" | "about";
@@ -52,6 +53,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen relative">
+      <FloatingCoins />
       {/* Header */}
       <header className="sticky top-0 z-20 glass border-b border-white/5">
         <div className="max-w-2xl mx-auto px-4 sm:px-5 h-14 sm:h-16 flex items-center justify-between gap-2">
