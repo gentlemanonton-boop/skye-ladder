@@ -138,8 +138,8 @@ export function WorldTab() {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl relative" style={{ height: "80vh" }}>
-      <div ref={scrollRef} className="relative overflow-y-auto overflow-x-hidden h-full">
+    <div className="overflow-hidden rounded-xl relative" style={{ height: "80vh", background: "#0a0000" }}>
+      <div ref={scrollRef} className="relative overflow-y-auto overflow-x-hidden h-full" style={{ background: "#0a0000" }}>
         <div className="relative w-full" style={{ height: WORLD_HEIGHT }}>
 
           {/* Solid base — full gradient from chaos to heaven */}
