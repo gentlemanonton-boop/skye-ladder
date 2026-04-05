@@ -142,23 +142,20 @@ export function WorldTab() {
       <div ref={scrollRef} className="relative overflow-y-auto overflow-x-hidden h-full" style={{ background: "#0a0000" }}>
         <div className="relative w-full" style={{ height: WORLD_HEIGHT }}>
 
-          {/* Solid base — full gradient from chaos to heaven */}
+          {/* Solid base — smooth gradient from chaos to heaven */}
           <div className="absolute inset-0" style={{
-            background: "linear-gradient(to top, #0a0000 0%, #1a0505 10%, #150820 30%, #0c1230 50%, #0e1a3a 65%, #1a2540 75%, #2a2010 88%, #3a3015 95%, #2a2510 100%)",
+            background: "linear-gradient(to top, #0a0000 0%, #120303 5%, #1a0808 10%, #1a0812 18%, #150820 28%, #0f0e2a 38%, #0c1230 48%, #0e1838 58%, #121e40 68%, #1a2840 76%, #222c38 82%, #2a2818 88%, #332c15 93%, #3a3418 97%, #3a3520 100%)",
           }} />
 
-          {/* ═══ HEAVEN — top ═══ */}
+          {/* ═══ HEAVEN — top glow ═══ */}
           <div className="absolute inset-x-0 top-0" style={{
             height: "22%",
-            background: "linear-gradient(to bottom, rgba(255,223,100,0.35) 0%, rgba(234,179,8,0.2) 30%, rgba(255,255,255,0.08) 60%, transparent 100%)",
+            background: "linear-gradient(to bottom, rgba(255,223,100,0.3) 0%, rgba(234,179,8,0.15) 30%, rgba(255,255,255,0.05) 60%, transparent 100%)",
           }} />
           <div className="absolute inset-x-0 top-0" style={{
-            height: "10%",
-            background: "radial-gradient(ellipse at 50% 0%, rgba(255,223,100,0.5) 0%, rgba(234,179,8,0.2) 40%, transparent 70%)",
+            height: "8%",
+            background: "radial-gradient(ellipse at 50% 0%, rgba(255,223,100,0.4) 0%, rgba(234,179,8,0.15) 40%, transparent 70%)",
           }} />
-          {/* Halo ring */}
-          <div className="absolute top-[3%] left-1/2 -translate-x-1/2 w-48 h-12 rounded-full pointer-events-none"
-            style={{ border: "2px solid rgba(234,179,8,0.3)", boxShadow: "0 0 30px rgba(234,179,8,0.2), inset 0 0 30px rgba(234,179,8,0.1)" }} />
 
           {/* ═══ CLOUDS — upper middle ═══ */}
           <div className="absolute inset-x-0" style={{
