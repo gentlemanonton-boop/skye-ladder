@@ -310,6 +310,16 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
               className="flex-1 text-[24px] sm:text-[28px] font-bold bg-transparent outline-none tabular-nums min-w-0" />
             <TokenButton token={payToken} onClick={() => setShowSelector("pay")} />
           </div>
+          {payToken.mint === NATIVE_MINT.toBase58() && (
+            <div className="flex items-center gap-2 mt-2">
+              {[0.5, 1, 2, 5].map(v => (
+                <button key={v} onClick={() => setAmount(v.toString())}
+                  className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg border transition-all ${
+                    amount === v.toString() ? "border-skye-500/40 bg-skye-500/15 text-skye-400" : "border-white/10 text-ink-tertiary hover:bg-white/5"
+                  }`}>{v} SOL</button>
+              ))}
+            </div>
+          )}
           {amountNum > 0 && payToken.mint === NATIVE_MINT.toBase58() && (
             <div className="text-[11px] text-ink-faint mt-1 tabular-nums">{formatUsd(amountNum * solUsd, 2)}</div>
           )}
