@@ -68,31 +68,24 @@ export function computeSellableTokens(pos: Position, effectiveBps: number): numb
   return Math.min(Math.max(0, maxSellable - alreadySold), pos.tokenBalance);
 }
 
-/** Sanitize corrupt positions (same logic as on-chain sanitize_corrupt_entry_prices) */
-function sanitizePosition(pos: Position, currentPrice: number): Position {
-  if (pos.entryPrice === 0 || pos.tokenBalance === 0 || currentPrice === 0) return pos;
+/** Check if position is corrupt (from old merge bug) */
+function isCorruptPosition(pos: Position, currentPrice: number): boolean {
+  if (pos.entryPrice === 0 || pos.tokenBalance === 0 || currentPrice === 0) return false;
   const currentPriceScaled = currentPrice * PRICE_SCALE;
-  // If entry_price > 1000x current price, it's corrupt from old merge bug
-  if (pos.entryPrice > currentPriceScaled * 1000) {
-    const correctedEntry = currentPriceScaled;
-    const correctedInitialSol = (pos.originalBalance * currentPrice);
-    return {
-      ...pos,
-      entryPrice: correctedEntry,
-      initialSol: correctedInitialSol,
-      unlockedBps: 0,
-    };
-  }
-  return pos;
+  // entry_price > 1000x current price = corrupt data from merge bug
+  return pos.entryPrice > currentPriceScaled * 1000;
 }
 
 export function enrichPosition(pos: Position, currentPrice: number): PositionDisplay {
-  const clean = sanitizePosition(pos, currentPrice);
-  const mult = clean.entryPrice > 0 ? (currentPrice * PRICE_SCALE) / clean.entryPrice : 0;
-  const calculatedBps = calculateUnlockedBps(currentPrice, clean);
-  const effectiveBps = Math.max(calculatedBps, clean.unlockedBps);
-  const sellableTokens = computeSellableTokens(clean, effectiveBps);
-  return { ...clean, multiplier: mult, phase: getPhase(mult), calculatedBps, effectiveBps, sellableTokens };
+  // Corrupt positions from merge bug — exclude from calculations
+  if (isCorruptPosition(pos, currentPrice)) {
+    return { ...pos, multiplier: 0, phase: "Corrupt", calculatedBps: 0, effectiveBps: 0, sellableTokens: 0 };
+  }
+  const mult = pos.entryPrice > 0 ? (currentPrice * PRICE_SCALE) / pos.entryPrice : 0;
+  const calculatedBps = calculateUnlockedBps(currentPrice, pos);
+  const effectiveBps = Math.max(calculatedBps, pos.unlockedBps);
+  const sellableTokens = computeSellableTokens(pos, effectiveBps);
+  return { ...pos, multiplier: mult, phase: getPhase(mult), calculatedBps, effectiveBps, sellableTokens };
 }
 
 export function getTotalSellable(positions: Position[], currentPrice: number): number {
@@ -104,9 +97,9 @@ export function getInitialBackTokens(positions: Position[], currentPrice: number
   const scaledPrice = currentPrice * PRICE_SCALE;
   let totalTokens = 0;
   let totalSol = 0;
-  for (const rawPos of positions) {
-    const pos = sanitizePosition(rawPos, currentPrice);
+  for (const pos of positions) {
     if (pos.entryPrice === 0 || pos.tokenBalance === 0) continue;
+    if (isCorruptPosition(pos, currentPrice)) continue;
     const mult = scaledPrice / pos.entryPrice;
     if (mult <= 1.0) continue;
     const original = pos.originalBalance >= pos.tokenBalance ? pos.originalBalance : pos.tokenBalance;

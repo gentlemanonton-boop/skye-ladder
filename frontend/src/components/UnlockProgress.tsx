@@ -48,7 +48,8 @@ export function UnlockProgress({ positions, currentPrice }: Props) {
   if (activePositions.length === 0) return null;
   if (currentPrice === 0) return null;
 
-  const enriched = activePositions.map((p) => enrichPosition(p, currentPrice));
+  const enriched = activePositions.map((p) => enrichPosition(p, currentPrice)).filter(p => p.phase !== "Corrupt");
+  if (enriched.length === 0) return null;
   const primary = enriched.reduce((b, p) => (p.tokenBalance > b.tokenBalance ? p : b), enriched[0]);
   const fillPct = multToPercent(primary.multiplier);
   const totalSellable = enriched.reduce((s, p) => s + p.sellableTokens, 0);
