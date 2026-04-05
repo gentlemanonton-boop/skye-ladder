@@ -482,54 +482,56 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
   // Detect if search is a valid mint address and fetch its info
   useEffect(() => {
     setPastedToken(null);
-    if (!search || search.length < 32 || search.length > 44) return;
-    try {
-      new PublicKey(search); // validate base58
-    } catch { return; }
+    setLoadingMint(false);
+    const trimmed = search.trim();
+    if (!trimmed || trimmed.length < 32 || trimmed.length > 44) return;
 
-    // Check if it's already in our token list with good metadata
-    const existing = allTokens.find(t => t.mint === search);
-    if (existing && existing.logo) return; // already shown with good data
+    let valid = false;
+    try { new PublicKey(trimmed); valid = true; } catch {}
+    if (!valid) return;
 
+    // Show immediately as loading, then enrich
     setLoadingMint(true);
+    let cancelled = false;
+
     (async () => {
+      let decimals = 6; // most pump tokens are 6
+      let symbol = trimmed.slice(0, 4) + "...";
+      let name = "Unknown Token";
+      let logo = "";
+
+      // Fetch decimals from on-chain (try both programs)
       try {
-        // Fetch decimals from on-chain
-        let decimals = existing?.decimals ?? 9;
-        try {
-          const mintInfo = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_PROGRAM_ID);
-          decimals = mintInfo.decimals;
-        } catch {
-          try {
-            const mintInfo = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_2022_PROGRAM_ID);
-            decimals = mintInfo.decimals;
-          } catch { /* use existing or default */ }
+        const info = await connection.getAccountInfo(new PublicKey(trimmed));
+        if (info && info.data.length >= 45) {
+          decimals = info.data[44]; // mint decimals at offset 44
         }
-
-        // Fetch name, symbol, logo from DexScreener
-        let symbol = existing?.symbol || search.slice(0, 4) + "...";
-        let name = existing?.name || "Unknown Token";
-        let logo = existing?.logo || "";
-        try {
-          const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${search}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-              const base = data[0].baseToken;
-              if (base) {
-                symbol = base.symbol || symbol;
-                name = base.name || name;
-              }
-              logo = data[0].info?.imageUrl || logo;
-            }
-          }
-        } catch {}
-
-        setPastedToken({ mint: search, symbol, name, logo, decimals });
       } catch {}
-      setLoadingMint(false);
+
+      // Fetch metadata from DexScreener
+      try {
+        const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${trimmed}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const base = data[0].baseToken;
+            if (base) {
+              symbol = base.symbol || symbol;
+              name = base.name || name;
+            }
+            logo = data[0].info?.imageUrl || "";
+          }
+        }
+      } catch {}
+
+      if (!cancelled) {
+        setPastedToken({ mint: trimmed, symbol, name, logo, decimals });
+        setLoadingMint(false);
+      }
     })();
-  }, [search, connection, allTokens]);
+
+    return () => { cancelled = true; };
+  }, [search, connection]);
 
   const solUsdVal = (solBalance ?? 0) * solUsd;
   const dustCount = allTokens.filter(t => !t.logo).length;
