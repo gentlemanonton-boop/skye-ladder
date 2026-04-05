@@ -118,41 +118,71 @@ export function useBalances() {
     // Fetch ALL token accounts (SPL + Token-2022)
     const tokens: TokenBalance[] = [];
 
-    function parseAccounts(accounts: { account: { data: Buffer } }[], isT22: boolean) {
+    // Collect raw token accounts first (mint + amount), then batch-fetch decimals
+    const rawTokens: { mint: string; amount: number; isT22: boolean }[] = [];
+
+    function collectAccounts(accounts: { account: { data: Buffer } }[], isT22: boolean) {
       for (const { account } of accounts) {
         try {
           const data = account.data;
           const mint = new PublicKey(data.slice(0, 32)).toBase58();
           const amount = Number(data.readBigUInt64LE(64));
           if (amount === 0) continue;
-
-          const meta = lookupMeta(mint);
-          const uiAmount = amount / 10 ** meta.decimals;
-
-          tokens.push({
-            mint,
-            symbol: meta.symbol,
-            name: meta.name,
-            balance: amount,
-            decimals: meta.decimals,
-            uiAmount: uiAmount < 0.001 ? uiAmount.toExponential(2) : uiAmount.toLocaleString(undefined, { maximumFractionDigits: 4 }),
-            isNative: mint === NATIVE_MINT.toBase58(),
-            isToken2022: isT22,
-            logo: meta.logo,
-          });
+          rawTokens.push({ mint, amount, isT22 });
         } catch {}
       }
     }
 
     try {
       const splAccounts = await connection.getTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID });
-      parseAccounts(splAccounts.value as any, false);
+      collectAccounts(splAccounts.value as any, false);
     } catch {}
 
     try {
       const t22Accounts = await connection.getTokenAccountsByOwner(publicKey, { programId: TOKEN_2022_PROGRAM_ID });
-      parseAccounts(t22Accounts.value as any, true);
+      collectAccounts(t22Accounts.value as any, true);
     } catch {}
+
+    // Batch-fetch mint accounts to get real decimals
+    const unknownMints = rawTokens
+      .filter(t => !HARDCODED[t.mint])
+      .map(t => t.mint);
+    const mintDecimals: Record<string, number> = {};
+    if (unknownMints.length > 0) {
+      try {
+        const uniqueMints = [...new Set(unknownMints)];
+        // Batch in groups of 100
+        for (let i = 0; i < uniqueMints.length; i += 100) {
+          const batch = uniqueMints.slice(i, i + 100).map(m => new PublicKey(m));
+          const infos = await connection.getMultipleAccountsInfo(batch);
+          for (let j = 0; j < batch.length; j++) {
+            const info = infos[j];
+            if (info && info.data.length >= 45) {
+              mintDecimals[batch[j].toBase58()] = info.data[44];
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Build final token list with correct decimals
+    for (const { mint, amount, isT22 } of rawTokens) {
+      const meta = lookupMeta(mint);
+      const decimals = HARDCODED[mint] ? meta.decimals : (mintDecimals[mint] ?? meta.decimals);
+      const uiAmount = amount / 10 ** decimals;
+
+      tokens.push({
+        mint,
+        symbol: meta.symbol,
+        name: meta.name,
+        balance: amount,
+        decimals,
+        uiAmount: uiAmount < 0.001 ? uiAmount.toExponential(2) : uiAmount.toLocaleString(undefined, { maximumFractionDigits: 4 }),
+        isNative: mint === NATIVE_MINT.toBase58(),
+        isToken2022: isT22,
+        logo: meta.logo,
+      });
+    }
 
     // Sort: tokens with logos first, then by raw balance descending
     tokens.sort((a, b) => {
