@@ -142,6 +142,11 @@ export function WorldTab() {
       <div ref={scrollRef} className="relative overflow-y-auto overflow-x-hidden h-full">
         <div className="relative w-full" style={{ height: WORLD_HEIGHT }}>
 
+          {/* Solid base — full gradient from chaos to heaven */}
+          <div className="absolute inset-0" style={{
+            background: "linear-gradient(to top, #0a0000 0%, #1a0505 10%, #150820 30%, #0c1230 50%, #0e1a3a 65%, #1a2540 75%, #2a2010 88%, #3a3015 95%, #2a2510 100%)",
+          }} />
+
           {/* ═══ HEAVEN — top ═══ */}
           <div className="absolute inset-x-0 top-0" style={{
             height: "22%",
