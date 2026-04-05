@@ -490,7 +490,7 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
     setLoadingMint(true);
     (async () => {
       try {
-        // Try SPL Token first, then Token-2022
+        // Fetch decimals from on-chain
         let decimals = 9;
         try {
           const mint = await getMint(connection, new PublicKey(search), "confirmed", TOKEN_PROGRAM_ID);
@@ -501,13 +501,27 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
             decimals = mint.decimals;
           } catch { /* use default 9 */ }
         }
-        setPastedToken({
-          mint: search,
-          symbol: search.slice(0, 4) + "...",
-          name: search.slice(0, 6) + "..." + search.slice(-4),
-          logo: "",
-          decimals,
-        });
+
+        // Fetch name, symbol, logo from DexScreener
+        let symbol = search.slice(0, 4) + "...";
+        let name = "Unknown Token";
+        let logo = "";
+        try {
+          const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${search}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              const base = data[0].baseToken;
+              if (base) {
+                symbol = base.symbol || symbol;
+                name = base.name || name;
+              }
+              logo = data[0].info?.imageUrl || "";
+            }
+          }
+        } catch {}
+
+        setPastedToken({ mint: search, symbol, name, logo, decimals });
       } catch {}
       setLoadingMint(false);
     })();
@@ -547,14 +561,20 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
           <button onClick={() => selectToken(pastedToken.mint, pastedToken.symbol, pastedToken.name, pastedToken.logo, pastedToken.decimals)}
             className="mt-2 w-full flex items-center justify-between px-3 py-3 rounded-xl bg-skye-500/10 border border-skye-500/20 hover:bg-skye-500/20 transition-colors">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-ink-tertiary">?</div>
+              {pastedToken.logo ? (
+                <img src={pastedToken.logo} alt={pastedToken.symbol} className="w-8 h-8 rounded-full" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-ink-tertiary">
+                  {pastedToken.symbol.slice(0, 2)}
+                </div>
+              )}
               <div className="text-left">
-                <div className="text-[13px] font-semibold text-ink-primary">Unknown Token</div>
-                <div className="text-[11px] text-ink-faint font-mono">{pastedToken.mint.slice(0, 8)}...{pastedToken.mint.slice(-6)}</div>
+                <div className="text-[13px] font-semibold text-ink-primary">{pastedToken.name}</div>
+                <div className="text-[11px] text-ink-faint font-mono">{pastedToken.mint.slice(0, 6)}...{pastedToken.mint.slice(-4)}</div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[11px] text-ink-faint">{pastedToken.decimals} decimals</div>
+              <div className="text-[12px] font-semibold text-ink-primary">{pastedToken.symbol}</div>
               <div className="text-[11px] text-skye-400 font-semibold">Select</div>
             </div>
           </button>
