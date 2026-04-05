@@ -22,30 +22,36 @@ import type { Position } from "../lib/unlock";
  *   sold_before_5x: bool (1)
  *   claimed: bool (1)
  */
-function parsePositions(data: Buffer): Position[] {
-  if (data.length < 77) return []; // 8 disc + 32 owner + 32 mint + 1 count + 4 vec len
+function parsePositions(raw: Uint8Array): Position[] {
+  try {
+    const data = Buffer.from(raw);
+    if (data.length < 77) return [];
 
-  const vecLen = data.readUInt32LE(73);
-  const positions: Position[] = [];
-  let offset = 77;
+    const vecLen = data.readUInt32LE(73);
+    if (vecLen > 20) return []; // sanity: max 20 positions
+    const positions: Position[] = [];
+    let offset = 77;
 
-  for (let i = 0; i < vecLen; i++) {
-    if (offset + 38 > data.length) break;
+    for (let i = 0; i < vecLen; i++) {
+      if (offset + 38 > data.length) break;
 
-    const entryPrice = Number(data.readBigUInt64LE(offset)); offset += 8;
-    const initialSol = Number(data.readBigUInt64LE(offset)); offset += 8;
-    const tokenBalance = Number(data.readBigUInt64LE(offset)); offset += 8;
-    const unlockedBps = data.readUInt32LE(offset); offset += 4;
-    const originalBalance = Number(data.readBigUInt64LE(offset)); offset += 8;
-    offset += 1; // sold_before_5x
-    offset += 1; // claimed
+      const entryPrice = Number(data.readBigUInt64LE(offset)); offset += 8;
+      const initialSol = Number(data.readBigUInt64LE(offset)); offset += 8;
+      const tokenBalance = Number(data.readBigUInt64LE(offset)); offset += 8;
+      const unlockedBps = data.readUInt32LE(offset); offset += 4;
+      const originalBalance = Number(data.readBigUInt64LE(offset)); offset += 8;
+      offset += 1; // sold_before_5x
+      offset += 1; // claimed
 
-    if (tokenBalance > 0) {
-      positions.push({ entryPrice, initialSol, tokenBalance, unlockedBps, originalBalance });
+      if (tokenBalance > 0) {
+        positions.push({ entryPrice, initialSol, tokenBalance, unlockedBps, originalBalance });
+      }
     }
-  }
 
-  return positions;
+    return positions;
+  } catch {
+    return [];
+  }
 }
 
 export function useWalletRecord() {
@@ -67,7 +73,7 @@ export function useWalletRecord() {
       try {
         const info = await connection.getAccountInfo(wrPDA);
         if (info && info.data) {
-          const parsed = parsePositions(info.data as Buffer);
+          const parsed = parsePositions(info.data);
           setPositions(parsed);
         } else {
           setPositions([]);
@@ -81,10 +87,12 @@ export function useWalletRecord() {
     fetch();
 
     const sub = connection.onAccountChange(wrPDA, (info) => {
-      if (info.data) {
-        const parsed = parsePositions(info.data as Buffer);
-        setPositions(parsed);
-      }
+      try {
+        if (info.data) {
+          const parsed = parsePositions(info.data);
+          setPositions(parsed);
+        }
+      } catch {}
     }, "confirmed");
     return () => { connection.removeAccountChangeListener(sub); };
   }, [connection, publicKey]);
