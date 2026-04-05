@@ -292,7 +292,7 @@ export function DiscoverTab() {
         <h2 className="font-pixel text-[14px] sm:text-[16px] text-skye-400 tracking-wide">DISCOVER</h2>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {loading && (
           <div className="glass p-8 text-center">
             <div className="w-2 h-2 rounded-full bg-skye-400 animate-pulse mx-auto mb-3" />

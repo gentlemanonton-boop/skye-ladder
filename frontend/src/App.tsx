@@ -104,7 +104,7 @@ export default function App() {
       </div>
 
       {/* Content */}
-      <main className="max-w-2xl mx-auto px-4 sm:px-5 pt-6 sm:pt-8 pb-16 space-y-5 sm:space-y-6">
+      <main className={`mx-auto px-4 sm:px-5 pt-6 sm:pt-8 pb-16 space-y-5 sm:space-y-6 ${tab === "discover" ? "max-w-5xl" : "max-w-2xl"}`}>
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="text-ink-tertiary text-[14px]">Loading pool...</div>
