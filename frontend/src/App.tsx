@@ -60,9 +60,12 @@ export default function App() {
             <div className="min-w-0">
               <h1 className="text-[14px] sm:text-[15px] font-bold text-ink-primary leading-tight">Skye</h1>
               {!loading && pool && (
-                <div className="flex items-center gap-2 sm:gap-3 text-[11px] sm:text-[12px] leading-tight truncate">
-                  <span className="text-skye-400">{formatUsd(priceUsd, 6)}</span>
-                  <span className="text-ink-tertiary">MC {formatUsd(mcUsd, 0)}</span>
+                <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] leading-tight truncate">
+                  <img src="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png" alt="SOL" className="w-3.5 h-3.5 rounded-full" />
+                  <span className="text-ink-secondary tabular-nums">{formatUsd(solUsd, 2)}</span>
+                  <span className="text-white/10">|</span>
+                  <span className="text-skye-400 tabular-nums">{formatUsd(priceUsd, 8)}</span>
+                  <span className="text-ink-faint hidden sm:inline">MC {formatUsd(mcUsd, 0)}</span>
                 </div>
               )}
             </div>
@@ -99,31 +102,6 @@ export default function App() {
           ))}
         </div>
       </div>
-
-      {/* Live price ticker */}
-      {!loading && pool && (
-        <div className="sticky top-[104px] sm:top-[120px] z-[9] border-b border-white/5 bg-[rgba(10,10,20,0.7)] backdrop-blur-md">
-          <div className="max-w-2xl mx-auto px-4 sm:px-5 flex items-center gap-4 sm:gap-6 py-1.5 overflow-x-auto text-[11px] sm:text-[12px]">
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <img src="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png" alt="SOL" className="w-4 h-4 rounded-full" />
-              <span className="font-semibold text-ink-primary">SOL</span>
-              <span className="text-ink-secondary tabular-nums">{formatUsd(solUsd, 2)}</span>
-            </div>
-            <div className="w-px h-3 bg-white/10 flex-shrink-0" />
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <img src={LOGO} alt="SKYE" className="w-4 h-4 rounded-full" />
-              <span className="font-semibold text-ink-primary">SKYE</span>
-              <span className="text-ink-secondary tabular-nums">{formatUsd(priceUsd, 8)}</span>
-              <span className="text-ink-faint tabular-nums">({currentPrice.toFixed(12).replace(/0+$/, "0")} SOL)</span>
-            </div>
-            <div className="w-px h-3 bg-white/10 flex-shrink-0" />
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <span className="text-ink-faint">MC</span>
-              <span className="text-ink-secondary tabular-nums">{formatUsd(mcUsd, 0)}</span>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Content */}
       <main className="max-w-2xl mx-auto px-4 sm:px-5 pt-6 sm:pt-8 pb-16 space-y-5 sm:space-y-6">
