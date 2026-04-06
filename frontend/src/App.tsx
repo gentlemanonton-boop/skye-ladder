@@ -144,6 +144,9 @@ export default function App() {
         <p className="font-mono text-[11px] sm:text-[12px] text-white break-all select-all">
           CA: 5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF
         </p>
+        <a href="https://x.com/d0uble07__?s=20" target="_blank" rel="noopener noreferrer" className="text-[11px] sm:text-[12px] text-ink-tertiary hover:text-skye-400 transition-colors">
+          Dev: @d0uble07__
+        </a>
       </footer>
     </div>
   );
