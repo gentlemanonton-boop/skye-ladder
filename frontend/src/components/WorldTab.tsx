@@ -60,11 +60,11 @@ export function WorldTab() {
     async function load() {
       try {
         const stored = getStoredTokens();
+        const SKYE_MINT_STR = "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF";
         const EXCLUDED = new Set([
           "HREtu5WXuKJP1L23shpNTP3U4Xtmfekv82Lyuq1vMrsd",
           "5BJcCPdZbxBMhodSZxUMowHSNY38dqhiRgSxDw8uLqZ1",
           "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
-          "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF",
         ]);
 
         const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: 50 });
@@ -82,7 +82,7 @@ export function WorldTab() {
           if (m && !EXCLUDED.has(m[1])) onChainMints.push(m[1]);
         }
 
-        const allMints = [...new Set([...stored.map(s => s.mint), ...onChainMints])].filter(m => !EXCLUDED.has(m));
+        const allMints = [...new Set([SKYE_MINT_STR, ...stored.map(s => s.mint), ...onChainMints])].filter(m => !EXCLUDED.has(m));
 
         const curvePDAs = allMints.map(mintStr =>
           PublicKey.findProgramAddressSync([Buffer.from("curve"), new PublicKey(mintStr).toBuffer()], SKYE_CURVE_ID)[0]
@@ -106,11 +106,12 @@ export function WorldTab() {
           const mcSol = price * 1e9;
           const mc = mcSol * solUsd;
 
+          const isSKYE = mintStr === SKYE_MINT_STR;
           results.push({
             mint: mintStr,
-            name: info?.name || mintStr.slice(0, 6) + "...",
-            symbol: info?.symbol || "???",
-            image: info?.image || "",
+            name: isSKYE ? "Skye" : (info?.name || mintStr.slice(0, 6) + "..."),
+            symbol: isSKYE ? "SKYE" : (info?.symbol || "???"),
+            image: isSKYE ? "/logo.jpeg" : (info?.image || ""),
             mc, mcSol, realSol, graduated,
           });
         }
