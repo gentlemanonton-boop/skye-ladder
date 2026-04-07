@@ -138,9 +138,6 @@ export default function App() {
       <TradeFlash />
 
       <footer className="relative z-10 border-t border-white/5 py-6 text-center px-4 space-y-2">
-        <p className="text-[11px] sm:text-[12px] text-ink-secondary">
-          Structured sell restrictions on Solana &middot; Token-2022 Transfer Hook
-        </p>
         <p className="font-mono text-[11px] sm:text-[12px] text-white break-all select-all">
           CA: 5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF
         </p>
