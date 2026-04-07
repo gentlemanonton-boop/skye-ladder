@@ -354,6 +354,11 @@ export function DiscoverTab() {
                 </div>
               </div>
 
+              {/* Contract address — click to copy */}
+              <div className="px-4 pb-3">
+                <CopyableMint mint={t.mint} />
+              </div>
+
               {/* Full swap panel */}
               {isTrading && (
                 <div className="px-4 pb-5 pt-2 border-t border-white/5 space-y-3">
@@ -446,5 +451,25 @@ export function DiscoverTab() {
 
       <div className="h-2 rounded-full overflow-hidden" style={{ background: "repeating-linear-gradient(90deg, rgba(34,197,94,0.3) 0px, rgba(34,197,94,0.3) 4px, transparent 4px, transparent 8px)" }} />
     </div>
+  );
+}
+
+function CopyableMint({ mint }: { mint: string }) {
+  const [copied, setCopied] = useState(false);
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(mint).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
+  return (
+    <button onClick={handleCopy}
+      className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-white/3 hover:bg-white/5 border border-white/5 rounded-lg transition-colors group">
+      <span className="font-mono text-[10px] text-ink-faint truncate">{mint}</span>
+      <span className={`text-[10px] font-semibold flex-shrink-0 transition-colors ${copied ? "text-emerald-400" : "text-skye-400 group-hover:text-skye-300"}`}>
+        {copied ? "✓ Copied" : "Copy"}
+      </span>
+    </button>
   );
 }
