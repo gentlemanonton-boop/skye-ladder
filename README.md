@@ -42,6 +42,21 @@ scripts/           Deployment and testing scripts
 - Flushes post-swap reserves to account data before CPI so the hook reads the correct entry price
 - Supports Token-2022 transfers with proper hook account forwarding via raw `invoke`
 
+### Liquidity & Graduation
+
+Every token launched on Skye starts on a bonding curve. At 85 SOL of real liquidity, the token graduates to a Skye AMM constant-product pool.
+
+**Liquidity is permanently locked by program design.** There is no `remove_liquidity`, `withdraw`, or `close_pool` instruction in either the bonding curve program or the Skye AMM program. The liquidity that gets seeded at graduation lives in the AMM pool forever — nobody (not the team, not the deployer, not anyone) can withdraw it.
+
+This is the same model used by pump.fun's PumpSwap: liquidity is locked because the program that holds it has no instruction to release it. The lock is enforced at the protocol level by the absence of a withdraw path, not by burning LP tokens.
+
+This applies to:
+- **SKYE itself** — once graduated, the AMM pool liquidity is permanent
+- **Every token launched via the Skye launchpad** — same flow, same lock
+- **Pre-graduation curves** — also have no withdraw path; the curve PDA holds all funds until graduation triggers the migration
+
+The only way liquidity could ever be removed is by deploying a new version of the program with a withdraw instruction. The program upgrade authority is currently held by the deployer wallet during active development, and will be moved to a multisig and eventually frozen as the protocol matures.
+
 ## Contract Addresses (Mainnet)
 
 | Contract | Address |
