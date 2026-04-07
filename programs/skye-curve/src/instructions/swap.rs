@@ -13,6 +13,10 @@ use crate::errors::SkyeCurveError;
 use crate::math;
 use crate::state::Curve;
 
+/// Treasury wallet that receives 50% of swap fees.
+/// This is the WSOL ATA owned by the treasury wallet.
+pub const TREASURY_WALLET: Pubkey = pubkey!("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
+
 /// Byte offsets for virtual reserves in Curve account data.
 /// Used to flush before CPI so the transfer hook reads correct price.
 const VIRTUAL_TOKEN_OFFSET: usize = 8 + 32 * 5; // disc + 5 pubkeys = 168
@@ -77,7 +81,7 @@ pub fn handler<'info>(
 
     if buy {
         // BUY: SOL in → tokens out
-        let (tokens_out, _fee) = math::compute_buy(
+        let (tokens_out, fee) = math::compute_buy(
             curve.virtual_sol_reserve,
             curve.virtual_token_reserve,
             sol_amount,
@@ -86,20 +90,24 @@ pub fn handler<'info>(
         require!(tokens_out >= min_out, SkyeCurveError::SlippageExceeded);
         require!(tokens_out <= curve.real_token_reserve, SkyeCurveError::InsufficientLiquidity);
 
-        // Update curve state
+        // 50% of fee goes to treasury (treasury share)
+        let treasury_fee = fee / 2;
+        let pool_share = sol_amount.saturating_sub(treasury_fee);
+
+        // Update curve state — only the pool's share enters the reserves
         let curve = &mut ctx.accounts.curve;
-        curve.virtual_sol_reserve = curve.virtual_sol_reserve.checked_add(sol_amount)
+        curve.virtual_sol_reserve = curve.virtual_sol_reserve.checked_add(pool_share)
             .ok_or(SkyeCurveError::MathOverflow)?;
         curve.virtual_token_reserve = curve.virtual_token_reserve.checked_sub(tokens_out)
             .ok_or(SkyeCurveError::MathOverflow)?;
-        curve.real_sol_reserve = curve.real_sol_reserve.checked_add(sol_amount)
+        curve.real_sol_reserve = curve.real_sol_reserve.checked_add(pool_share)
             .ok_or(SkyeCurveError::MathOverflow)?;
         curve.real_token_reserve = curve.real_token_reserve.checked_sub(tokens_out)
             .ok_or(SkyeCurveError::MathOverflow)?;
 
         flush_curve_reserves(curve)?;
 
-        // Transfer WSOL in from user
+        // Transfer pool's share to curve reserves
         token_interface::transfer_checked(
             CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
                 from: ctx.accounts.user_wsol.to_account_info(),
@@ -107,9 +115,27 @@ pub fn handler<'info>(
                 to: ctx.accounts.sol_reserve.to_account_info(),
                 authority: ctx.accounts.user.to_account_info(),
             }),
-            sol_amount,
+            pool_share,
             ctx.accounts.wsol_mint.decimals,
         )?;
+
+        // Transfer treasury's share directly to treasury WSOL ATA
+        if treasury_fee > 0 {
+            require!(
+                ctx.accounts.treasury_wsol.owner == TREASURY_WALLET,
+                SkyeCurveError::Unauthorized
+            );
+            token_interface::transfer_checked(
+                CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                    from: ctx.accounts.user_wsol.to_account_info(),
+                    mint: ctx.accounts.wsol_mint.to_account_info(),
+                    to: ctx.accounts.treasury_wsol.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                }),
+                treasury_fee,
+                ctx.accounts.wsol_mint.decimals,
+            )?;
+        }
 
         // Transfer tokens out from curve reserve (triggers hook as "buy")
         transfer_token2022(
@@ -135,13 +161,17 @@ pub fn handler<'info>(
         // SELL: tokens in → SOL out
         // sol_amount parameter is actually tokens_in for sells
         let tokens_in = sol_amount;
-        let (sol_out, _fee) = math::compute_sell(
+        let (sol_out, fee) = math::compute_sell(
             curve.virtual_sol_reserve,
             curve.virtual_token_reserve,
             tokens_in,
             curve.fee_bps,
         )?;
-        require!(sol_out >= min_out, SkyeCurveError::SlippageExceeded);
+        // Treasury takes 50% of the fee
+        let treasury_fee = fee / 2;
+        let sol_out_to_user = sol_out.saturating_sub(treasury_fee);
+        require!(sol_out_to_user >= min_out, SkyeCurveError::SlippageExceeded);
+        // Total leaving the curve = sol_out_to_user + treasury_fee = sol_out
         require!(sol_out <= curve.real_sol_reserve, SkyeCurveError::InsufficientLiquidity);
 
         // Update curve state
@@ -170,7 +200,7 @@ pub fn handler<'info>(
             &[],
         )?;
 
-        // Transfer SOL out to user
+        // Transfer SOL out to user (minus treasury fee)
         token_interface::transfer_checked(
             CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), TransferChecked {
                 from: ctx.accounts.sol_reserve.to_account_info(),
@@ -178,11 +208,29 @@ pub fn handler<'info>(
                 to: ctx.accounts.user_wsol.to_account_info(),
                 authority: ctx.accounts.curve.to_account_info(),
             }, &[curve_seeds]),
-            sol_out,
+            sol_out_to_user,
             ctx.accounts.wsol_mint.decimals,
         )?;
 
-        msg!("CURVE SELL: {} tokens -> {} SOL", tokens_in, sol_out);
+        // Transfer treasury fee from curve reserve to treasury
+        if treasury_fee > 0 {
+            require!(
+                ctx.accounts.treasury_wsol.owner == TREASURY_WALLET,
+                SkyeCurveError::Unauthorized
+            );
+            token_interface::transfer_checked(
+                CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), TransferChecked {
+                    from: ctx.accounts.sol_reserve.to_account_info(),
+                    mint: ctx.accounts.wsol_mint.to_account_info(),
+                    to: ctx.accounts.treasury_wsol.to_account_info(),
+                    authority: ctx.accounts.curve.to_account_info(),
+                }, &[curve_seeds]),
+                treasury_fee,
+                ctx.accounts.wsol_mint.decimals,
+            )?;
+        }
+
+        msg!("CURVE SELL: {} tokens -> {} SOL (treasury: {})", tokens_in, sol_out_to_user, treasury_fee);
     }
 
     Ok(())
@@ -214,6 +262,11 @@ pub struct SwapCurve<'info> {
 
     #[account(mut, constraint = sol_reserve.key() == curve.sol_reserve)]
     pub sol_reserve: Box<InterfaceAccount<'info, InterfaceTokenAccount>>,
+
+    /// Treasury WSOL ATA — receives 50% of swap fees.
+    /// CHECK: Validated against TREASURY_WALLET in handler.
+    #[account(mut, token::mint = wsol_mint)]
+    pub treasury_wsol: Box<InterfaceAccount<'info, InterfaceTokenAccount>>,
 
     pub token_2022_program: Program<'info, Token2022>,
     pub token_program: Program<'info, Token>,

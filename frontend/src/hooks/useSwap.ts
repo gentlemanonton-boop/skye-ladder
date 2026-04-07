@@ -27,9 +27,11 @@ export function useSwap() {
       setPending(true); setError(null); setLastTx(null);
 
       try {
+        const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
         const [curvePDA] = getCurvePDA();
         const tokenReserve = getAssociatedTokenAddressSync(SKYE_MINT, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const solReserve = getAssociatedTokenAddressSync(NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const userToken = getAssociatedTokenAddressSync(SKYE_MINT, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
 
@@ -90,6 +92,7 @@ export function useSwap() {
             { pubkey: userWsol, isSigner: false, isWritable: true },
             { pubkey: tokenReserve, isSigner: false, isWritable: true },
             { pubkey: solReserve, isSigner: false, isWritable: true },
+            { pubkey: treasuryWsol, isSigner: false, isWritable: true },
             { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
             { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
             ...hookAccounts,
