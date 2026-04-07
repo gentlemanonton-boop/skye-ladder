@@ -21,6 +21,7 @@ const EXCLUDED_MINTS = new Set([
   "5BJcCPdZbxBMhodSZxUMowHSNY38dqhiRgSxDw8uLqZ1",
   "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
   "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF",
+  "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL test (no image)
 ]);
 
 interface DiscoveredToken extends LaunchedTokenInfo {
