@@ -138,11 +138,29 @@ export default function App() {
       <TradeFlash />
 
       <footer className="relative z-10 border-t border-white/5 py-6 text-center px-4 space-y-2">
-        <p className="font-mono text-[11px] sm:text-[12px] text-white break-all select-all">
-          CA: 5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF
-        </p>
+        <FooterCA />
       </footer>
     </div>
+  );
+}
+
+function FooterCA() {
+  const [copied, setCopied] = useState(false);
+  const ca = "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF";
+  function handleCopy() {
+    navigator.clipboard.writeText(ca).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
+  return (
+    <button onClick={handleCopy}
+      className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors group">
+      <span className="font-mono text-[11px] sm:text-[12px] text-white break-all">CA: {ca}</span>
+      <span className={`text-[11px] font-semibold flex-shrink-0 transition-colors ${copied ? "text-emerald-400" : "text-skye-400 group-hover:text-skye-300"}`}>
+        {copied ? "✓" : "Copy"}
+      </span>
+    </button>
   );
 }
 
