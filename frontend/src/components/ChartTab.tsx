@@ -44,12 +44,15 @@ export function ChartTab() {
     let destroyed = false;
     import("lightweight-charts").then((lc) => {
       if (destroyed || !containerRef.current) return;
+      const isMobile = window.innerWidth < 640;
       const chart = lc.createChart(containerRef.current, {
-        layout: { background: { type: lc.ColorType.Solid, color: "transparent" }, textColor: "#9ca3af", fontFamily: "'Press Start 2P', monospace", fontSize: 8 },
+        autoSize: true,
+        layout: { background: { type: lc.ColorType.Solid, color: "transparent" }, textColor: "#9ca3af", fontFamily: "monospace", fontSize: isMobile ? 9 : 10 },
         grid: { vertLines: { color: "rgba(34,197,94,0.08)", style: lc.LineStyle.Dotted }, horzLines: { color: "rgba(34,197,94,0.08)", style: lc.LineStyle.Dotted } },
-        rightPriceScale: { borderColor: "rgba(34,197,94,0.15)", scaleMargins: { top: 0.1, bottom: 0.1 } },
-        timeScale: { borderColor: "rgba(34,197,94,0.15)", timeVisible: true, secondsVisible: false },
-        handleScroll: { vertTouchDrag: false },
+        rightPriceScale: { borderColor: "rgba(34,197,94,0.15)", scaleMargins: { top: 0.1, bottom: 0.1 }, minimumWidth: isMobile ? 60 : 80 },
+        timeScale: { borderColor: "rgba(34,197,94,0.15)", timeVisible: true, secondsVisible: false, rightOffset: 5, barSpacing: isMobile ? 4 : 6 },
+        handleScroll: { vertTouchDrag: false, horzTouchDrag: true, mouseWheel: true, pressedMouseMove: true },
+        handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
         crosshair: { vertLine: { color: "rgba(34,197,94,0.3)", labelBackgroundColor: "rgba(10,10,20,0.9)" }, horzLine: { color: "rgba(34,197,94,0.3)", labelBackgroundColor: "rgba(10,10,20,0.9)" } },
       });
       const series = chart.addSeries(lc.AreaSeries, {
@@ -106,7 +109,7 @@ export function ChartTab() {
 
       {/* Chart area */}
       <div className="glass rounded-t-none border-t-0 overflow-hidden relative">
-        <div ref={containerRef} className="w-full" style={{ height: "300px" }} />
+        <div ref={containerRef} className="w-full h-[280px] sm:h-[320px]" style={{ touchAction: "pan-x pinch-zoom" }} />
 
         {history.length < 2 && (
           <div className="absolute inset-0 flex items-center justify-center">

@@ -114,8 +114,10 @@ export function DiscoverTab() {
           const mintStr = allMints[i];
           const info = stored.find(s => s.mint === mintStr);
           const acct = curveAccounts[i];
-          let realSol = 0, virtualSol = 0, virtualToken = 0, graduated = false;
+          let realSol = 0, virtualSol = 0, virtualToken = 0, graduated = false, creatorOnChain = "";
           if (acct && acct.data.length >= 210) {
+            // Creator is the first field after the 8-byte discriminator (32 bytes)
+            creatorOnChain = new PublicKey(acct.data.slice(8, 40)).toBase58();
             virtualToken = Number(acct.data.readBigUInt64LE(168));
             virtualSol = Number(acct.data.readBigUInt64LE(176));
             realSol = Number(acct.data.readBigUInt64LE(184));
@@ -127,7 +129,7 @@ export function DiscoverTab() {
             image: info?.image || "", description: info?.description || "",
             website: info?.website || "", twitter: info?.twitter || "",
             telegram: info?.telegram || "", discord: info?.discord || "",
-            curve: curvePDAs[i].toBase58(), creator: info?.creator || "",
+            curve: curvePDAs[i].toBase58(), creator: creatorOnChain || info?.creator || "",
             launchedAt: info?.launchedAt || 0, realSol, virtualSol, virtualToken, graduated,
           });
         }
@@ -152,6 +154,31 @@ export function DiscoverTab() {
     setSwapResult(null);
 
     try {
+      // Creator buy limit: deployers can only buy max 2 SOL of their own token
+      if (isBuy && token.creator && publicKey.toBase58() === token.creator) {
+        const newBuySol = parseFloat(amount);
+        const wrPDA = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), new PublicKey(token.mint).toBuffer()], SKYE_LADDER_ID)[0];
+        let alreadySpent = 0;
+        try {
+          const wrInfo = await connection.getAccountInfo(wrPDA);
+          if (wrInfo && wrInfo.data.length >= 77) {
+            const data = Buffer.from(wrInfo.data);
+            const vecLen = data.readUInt32LE(73);
+            let offset = 77;
+            for (let i = 0; i < Math.min(vecLen, 20); i++) {
+              if (offset + 38 > data.length) break;
+              offset += 8; // entry_price
+              const initialSol = Number(data.readBigUInt64LE(offset)); offset += 8;
+              offset += 8 + 4 + 8 + 1 + 1; // skip rest of position
+              alreadySpent += initialSol / 1e9;
+            }
+          }
+        } catch {}
+        if (alreadySpent + newBuySol > 2) {
+          throw new Error(`Creator buy limit: 2 SOL max. You've already spent ${alreadySpent.toFixed(4)} SOL.`);
+        }
+      }
+
       const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
       const mint = new PublicKey(token.mint);
       const [curvePDA] = PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], SKYE_CURVE_ID);
