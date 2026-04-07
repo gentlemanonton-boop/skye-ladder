@@ -66,7 +66,7 @@ export default function App() {
                   <span className="text-ink-secondary tabular-nums">{formatUsd(solUsd, 2)}</span>
                   <span className="text-white/10">|</span>
                   <span className="text-skye-400 tabular-nums">{formatUsd(priceUsd, 8)}</span>
-                  <span className="text-ink-faint hidden sm:inline">MC {formatUsd(mcUsd, 0)}</span>
+                  <span className="text-ink-faint">MC {formatUsd(mcUsd, 0)}</span>
                 </div>
               )}
             </div>
