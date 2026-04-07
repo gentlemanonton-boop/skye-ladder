@@ -154,28 +154,10 @@ export function DiscoverTab() {
     setSwapResult(null);
 
     try {
-      // Creator buy limit: deployers can only buy max 2 SOL of their own token
+      // Creator buy limit: deployers can only buy max 2 SOL per swap on their own token
       if (isBuy && token.creator && publicKey.toBase58() === token.creator) {
-        const newBuySol = parseFloat(amount);
-        const wrPDA = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), new PublicKey(token.mint).toBuffer()], SKYE_LADDER_ID)[0];
-        let alreadySpent = 0;
-        try {
-          const wrInfo = await connection.getAccountInfo(wrPDA);
-          if (wrInfo && wrInfo.data.length >= 77) {
-            const data = Buffer.from(wrInfo.data);
-            const vecLen = data.readUInt32LE(73);
-            let offset = 77;
-            for (let i = 0; i < Math.min(vecLen, 20); i++) {
-              if (offset + 38 > data.length) break;
-              offset += 8; // entry_price
-              const initialSol = Number(data.readBigUInt64LE(offset)); offset += 8;
-              offset += 8 + 4 + 8 + 1 + 1; // skip rest of position
-              alreadySpent += initialSol / 1e9;
-            }
-          }
-        } catch {}
-        if (alreadySpent + newBuySol > 2) {
-          throw new Error(`Creator buy limit: 2 SOL max. You've already spent ${alreadySpent.toFixed(4)} SOL.`);
+        if (parseFloat(amount) > 2) {
+          throw new Error("Creator buy limit: 2 SOL max per buy on your own token.");
         }
       }
 
