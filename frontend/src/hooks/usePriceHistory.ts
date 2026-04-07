@@ -7,16 +7,17 @@ export interface PricePoint {
   price: number;
 }
 
-const STORAGE_KEY = "skye_price_history_v3";
-const MAX_POINTS = 8640;
+const STORAGE_KEY = "skye_price_history_v4";
+const MAX_POINTS = 50000; // ~6 days at 10s intervals
 
 function load(): PricePoint[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    // Migrate from v3 if exists
+    const v3 = localStorage.getItem("skye_price_history_v3");
+    const raw = localStorage.getItem(STORAGE_KEY) || v3;
+    if (v3) { localStorage.removeItem("skye_price_history_v3"); }
     if (!raw) return [];
-    const pts = JSON.parse(raw) as PricePoint[];
-    const cutoff = Date.now() / 1000 - 86400;
-    return pts.filter((p) => p.time > cutoff);
+    return JSON.parse(raw) as PricePoint[];
   } catch { return []; }
 }
 
