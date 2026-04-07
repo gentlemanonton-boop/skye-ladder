@@ -18,6 +18,8 @@ import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS } fro
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
 const LAUNCH_DISC = new Uint8Array([10,128,86,171,3,137,161,244]);
+const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
+const LAUNCH_FEE_LAMPORTS = 0.01 * LAMPORTS_PER_SOL;
 
 export function LaunchTab() {
   const wallet = useWallet();
@@ -89,6 +91,8 @@ export function LaunchTab() {
         .instruction();
 
       const tx1 = new Transaction().add(
+        // Platform launch fee
+        SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: TREASURY_WALLET, lamports: LAUNCH_FEE_LAMPORTS }),
         SystemProgram.createAccount({
           fromPubkey: publicKey, newAccountPubkey: mint,
           space: mintLen, lamports: mintLamports, programId: TOKEN_2022_PROGRAM_ID,
