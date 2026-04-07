@@ -1,11 +1,22 @@
 import { useEffect, useState } from "react";
 
 const COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd";
-const FALLBACK_PRICE = 140;
+const CACHE_KEY = "skye_sol_usd_cache";
 const REFRESH_MS = 60_000;
 
+function loadCached(): number {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) {
+      const cached = parseFloat(raw);
+      if (cached > 0) return cached;
+    }
+  } catch {}
+  return 80; // last-resort fallback (close to current SOL price)
+}
+
 export function useSolPrice() {
-  const [price, setPrice] = useState(FALLBACK_PRICE);
+  const [price, setPrice] = useState(loadCached);
 
   useEffect(() => {
     let cancelled = false;
@@ -16,9 +27,11 @@ export function useSolPrice() {
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && data?.solana?.usd) {
-          setPrice(data.solana.usd);
+          const newPrice = data.solana.usd;
+          setPrice(newPrice);
+          try { localStorage.setItem(CACHE_KEY, newPrice.toString()); } catch {}
         }
-      } catch { /* use fallback */ }
+      } catch { /* keep cached price, don't reset */ }
     }
 
     fetch_();

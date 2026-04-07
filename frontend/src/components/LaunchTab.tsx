@@ -7,7 +7,8 @@ import {
   TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, NATIVE_MINT,
   ExtensionType, createInitializeMintInstruction, createInitializeTransferHookInstruction,
   createAssociatedTokenAccountInstruction, createMintToInstruction,
-  createTransferCheckedInstruction, createSyncNativeInstruction,
+  createTransferCheckedWithTransferHookInstruction, createSyncNativeInstruction,
+  createCloseAccountInstruction,
   getMintLen, getAssociatedTokenAddressSync, ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
@@ -140,10 +141,6 @@ export function LaunchTab() {
       const wrIx = await (ladderProgram.methods as any).createWalletRecord()
         .accounts({ payer: publicKey, wallet: curvePDA, mint, walletRecord: curveWR, systemProgram: SystemProgram.programId }).instruction();
 
-      const pauseIx = await (ladderProgram.methods as any).setPaused(true).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
-      const transferIx = createTransferCheckedInstruction(creatorATA, mint, tokenReserve, publicKey, supplyRaw, DECIMALS, [], TOKEN_2022_PROGRAM_ID);
-      const unpauseIx = await (ladderProgram.methods as any).setPaused(false).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
-
       const tx2 = new Transaction().add(
         createAssociatedTokenAccountInstruction(publicKey, tokenReserve, curvePDA, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
         createAssociatedTokenAccountInstruction(publicKey, solReserve, curvePDA, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
@@ -161,9 +158,6 @@ export function LaunchTab() {
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ], programId: SKYE_CURVE_ID, data: launchData },
         wrIx,
-        pauseIx,
-        transferIx,
-        unpauseIx,
       );
       tx2.feePayer = publicKey;
       tx2.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
@@ -171,10 +165,30 @@ export function LaunchTab() {
       await connection.confirmTransaction(sig2, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // TX 3 (OPTIONAL): Initial buy
+      // TX 3: Pause hook + transfer supply with hook accounts + close creator ATA + unpause
+      // (separate tx because createTransferCheckedWithTransferHookInstruction needs the
+      // curve to exist on-chain to resolve hook accounts)
+      // ══════════════════════════════════════════════════
+      setStep(3);
+
+      const pauseIx = await (ladderProgram.methods as any).setPaused(true).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
+      const transferWithHookIx = await createTransferCheckedWithTransferHookInstruction(
+        connection, creatorATA, mint, tokenReserve, publicKey, supplyRaw, DECIMALS, [], "confirmed", TOKEN_2022_PROGRAM_ID
+      );
+      const closeCreatorAtaIx = createCloseAccountInstruction(creatorATA, publicKey, publicKey, [], TOKEN_2022_PROGRAM_ID);
+      const unpauseIx = await (ladderProgram.methods as any).setPaused(false).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
+
+      const tx3 = new Transaction().add(pauseIx, transferWithHookIx, closeCreatorAtaIx, unpauseIx);
+      tx3.feePayer = publicKey;
+      tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      const sig3 = await sendTransaction(tx3, connection);
+      await connection.confirmTransaction(sig3, "confirmed");
+
+      // ══════════════════════════════════════════════════
+      // TX 4 (OPTIONAL): Initial buy
       // ══════════════════════════════════════════════════
       if (initialBuySolNum > 0) {
-        setStep(3);
+        setStep(4);
         const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const [buyerWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
@@ -183,6 +197,8 @@ export function LaunchTab() {
         const buyerWRInfo = await connection.getAccountInfo(buyerWR);
 
         const buyIxs: TransactionInstruction[] = [];
+        // Recreate creator's token ATA (closed in TX3)
+        buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, creatorATA, publicKey, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
         if (!wsolInfo) buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
         if (!buyerWRInfo) {
           buyIxs.push(await (ladderProgram.methods as any).createWalletRecord()
@@ -243,7 +259,7 @@ export function LaunchTab() {
         launchedAt: Math.floor(Date.now() / 1000),
       });
 
-      setStep(4);
+      setStep(5);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
 
     } catch (e: any) {
@@ -253,8 +269,8 @@ export function LaunchTab() {
     }
   }
 
-  const stepLabels = ["", "Creating token + hook...", "Setting up bonding curve...", "Buying initial position...", "Done!"];
-  const isLaunching = step > 0 && step < 4;
+  const stepLabels = ["", "Creating token + hook...", "Setting up bonding curve...", "Transferring supply...", "Buying initial position...", "Done!"];
+  const isLaunching = step > 0 && step < 5;
 
   return (
     <div className="space-y-6">
