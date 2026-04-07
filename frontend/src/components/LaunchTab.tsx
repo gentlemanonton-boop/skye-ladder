@@ -222,6 +222,16 @@ export function LaunchTab() {
       <div className="glass p-5 sm:p-6 space-y-4">
         <h3 className="font-pixel text-[10px] text-skye-400 tracking-wider mb-4">CREATE TOKEN</h3>
 
+        {/* Phantom warning notice */}
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2.5">
+          <svg className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div className="text-[11px] sm:text-[12px] text-amber-200/90">
+            <span className="font-semibold text-amber-300">Heads up:</span> Phantom may show a "transaction may be unsafe" warning. This is a false positive — Skye's programs aren't verified by Blowfish yet. Click <span className="font-semibold text-amber-300">Approve anyway</span> to continue. Your funds and tokens are safe.
+          </div>
+        </div>
+
         {/* Image */}
         <div>
           <label className="text-[12px] font-medium text-ink-tertiary mb-2 block">Token Image</label>
