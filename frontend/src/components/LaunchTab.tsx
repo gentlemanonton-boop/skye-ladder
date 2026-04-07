@@ -7,19 +7,20 @@ import {
   TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, NATIVE_MINT,
   ExtensionType, createInitializeMintInstruction, createInitializeTransferHookInstruction,
   createAssociatedTokenAccountInstruction, createMintToInstruction,
-  createTransferCheckedInstruction,
+  createTransferCheckedInstruction, createSyncNativeInstruction,
   getMintLen, getAssociatedTokenAddressSync, ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
+import { TransactionInstruction } from "@solana/web3.js";
 import ladderIdl from "../idl/skye_ladder.json";
 import { storeToken } from "../lib/launchStore";
-import { uploadAndCreateMetadata } from "../lib/metadataService";
 import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS } from "../constants";
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
 const LAUNCH_DISC = new Uint8Array([10,128,86,171,3,137,161,244]);
 const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
 const LAUNCH_FEE_LAMPORTS = 0.01 * LAMPORTS_PER_SOL;
+const SWAP_DISC = new Uint8Array([248,198,158,145,225,117,135,200]);
 
 export function LaunchTab() {
   const wallet = useWallet();
@@ -35,6 +36,7 @@ export function LaunchTab() {
   const [discord, setDiscord] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [initialBuySol, setInitialBuySol] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,13 @@ export function LaunchTab() {
     setError(null);
     setResult(null);
 
+    // Validate initial buy amount
+    const initialBuySolNum = parseFloat(initialBuySol) || 0;
+    if (initialBuySolNum > 2) {
+      setError("Initial buy capped at 2 SOL");
+      return;
+    }
+
     const supplyNum = parseInt(supply) || DEFAULT_SUPPLY;
     const supplyRaw = BigInt(supplyNum) * BigInt(10 ** DECIMALS);
     const mintKeypair = Keypair.generate();
@@ -65,6 +74,15 @@ export function LaunchTab() {
         connection, { publicKey, signTransaction: null, signAllTransactions: null } as any, { commitment: "confirmed" }
       );
       const ladderProgram = new Program(ladderIdl as any, provider);
+
+      // Convert image to data URI immediately (no Arweave, no extra approvals)
+      let imageDataUri = "";
+      if (imageFile) {
+        const bytes = new Uint8Array(await imageFile.arrayBuffer());
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        imageDataUri = `data:${imageFile.type};base64,${btoa(binary)}`;
+      }
 
       // Derive all PDAs
       const creatorATA = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
@@ -77,7 +95,7 @@ export function LaunchTab() {
       const [curveWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), curvePDA.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
 
       // ══════════════════════════════════════════════════
-      // TX 1: Create mint + mint supply + init hook (1 approval)
+      // TX 1: Create mint + supply + init hook (1 approval)
       // ══════════════════════════════════════════════════
       setStep(1);
 
@@ -91,7 +109,6 @@ export function LaunchTab() {
         .instruction();
 
       const tx1 = new Transaction().add(
-        // Platform launch fee
         SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: TREASURY_WALLET, lamports: LAUNCH_FEE_LAMPORTS }),
         SystemProgram.createAccount({
           fromPubkey: publicKey, newAccountPubkey: mint,
@@ -110,29 +127,9 @@ export function LaunchTab() {
       await connection.confirmTransaction(sig1, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // STEP 2: Upload metadata to Arweave + create Metaplex account
+      // TX 2: Curve setup + supply transfer (1 approval, combined)
       // ══════════════════════════════════════════════════
       setStep(2);
-
-      let arweaveImageUri = "";
-      try {
-        arweaveImageUri = await uploadAndCreateMetadata({
-          wallet: wallet as any,
-          mint: mint.toBase58(),
-          name,
-          symbol,
-          description,
-          imageFile,
-        });
-      } catch (metaErr: any) {
-        // Non-fatal — token still works without Metaplex metadata
-        console.warn("Metadata upload failed (non-fatal):", metaErr);
-      }
-
-      // ══════════════════════════════════════════════════
-      // TX 3: Create ATAs + launch curve + WalletRecord (1 approval)
-      // ══════════════════════════════════════════════════
-      setStep(3);
 
       const launchData = Buffer.alloc(8 + 8 + 8 + 2);
       launchData.set(LAUNCH_DISC, 0);
@@ -142,6 +139,10 @@ export function LaunchTab() {
 
       const wrIx = await (ladderProgram.methods as any).createWalletRecord()
         .accounts({ payer: publicKey, wallet: curvePDA, mint, walletRecord: curveWR, systemProgram: SystemProgram.programId }).instruction();
+
+      const pauseIx = await (ladderProgram.methods as any).setPaused(true).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
+      const transferIx = createTransferCheckedInstruction(creatorATA, mint, tokenReserve, publicKey, supplyRaw, DECIMALS, [], TOKEN_2022_PROGRAM_ID);
+      const unpauseIx = await (ladderProgram.methods as any).setPaused(false).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
 
       const tx2 = new Transaction().add(
         createAssociatedTokenAccountInstruction(publicKey, tokenReserve, curvePDA, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
@@ -160,6 +161,9 @@ export function LaunchTab() {
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ], programId: SKYE_CURVE_ID, data: launchData },
         wrIx,
+        pauseIx,
+        transferIx,
+        unpauseIx,
       );
       tx2.feePayer = publicKey;
       tx2.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
@@ -167,37 +171,79 @@ export function LaunchTab() {
       await connection.confirmTransaction(sig2, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // TX 4: Pause + transfer supply + unpause (1 approval)
+      // TX 3 (OPTIONAL): Initial buy
       // ══════════════════════════════════════════════════
-      setStep(4);
+      if (initialBuySolNum > 0) {
+        setStep(3);
+        const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const [buyerWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
 
-      const pauseIx = await (ladderProgram.methods as any).setPaused(true).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
-      const transferIx = createTransferCheckedInstruction(creatorATA, mint, tokenReserve, publicKey, supplyRaw, DECIMALS, [], TOKEN_2022_PROGRAM_ID);
-      const unpauseIx = await (ladderProgram.methods as any).setPaused(false).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
+        const wsolInfo = await connection.getAccountInfo(userWsol);
+        const buyerWRInfo = await connection.getAccountInfo(buyerWR);
 
-      const tx3 = new Transaction().add(pauseIx, transferIx, unpauseIx);
-      tx3.feePayer = publicKey;
-      tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      const sig3 = await sendTransaction(tx3, connection);
-      await connection.confirmTransaction(sig3, "confirmed");
+        const buyIxs: TransactionInstruction[] = [];
+        if (!wsolInfo) buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+        if (!buyerWRInfo) {
+          buyIxs.push(await (ladderProgram.methods as any).createWalletRecord()
+            .accounts({ payer: publicKey, wallet: publicKey, mint, walletRecord: buyerWR, systemProgram: SystemProgram.programId }).instruction());
+        }
 
-      // Store token metadata locally (use Arweave image if available, else data URI)
-      let localImageUri = arweaveImageUri;
-      if (!localImageUri && imageFile) {
-        const bytes = new Uint8Array(await imageFile.arrayBuffer());
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        localImageUri = `data:${imageFile.type};base64,${btoa(binary)}`;
+        const lamportsIn = Math.floor(initialBuySolNum * LAMPORTS_PER_SOL);
+        buyIxs.push(
+          SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: userWsol, lamports: lamportsIn }),
+          createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
+        );
+
+        const swapData = Buffer.alloc(8 + 8 + 8 + 1);
+        swapData.set(SWAP_DISC, 0);
+        swapData.writeBigUInt64LE(BigInt(lamportsIn), 8);
+        swapData.writeBigUInt64LE(0n, 16);
+        swapData[24] = 1;
+
+        const senderWR = curveWR;
+        const receiverWR = buyerWR;
+
+        buyIxs.push(new TransactionInstruction({
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: curvePDA, isSigner: false, isWritable: true },
+            { pubkey: mint, isSigner: false, isWritable: false },
+            { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+            { pubkey: creatorATA, isSigner: false, isWritable: true },
+            { pubkey: userWsol, isSigner: false, isWritable: true },
+            { pubkey: tokenReserve, isSigner: false, isWritable: true },
+            { pubkey: solReserve, isSigner: false, isWritable: true },
+            { pubkey: getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID), isSigner: false, isWritable: true },
+            { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: configPDA, isSigner: false, isWritable: false },
+            { pubkey: senderWR, isSigner: false, isWritable: true },
+            { pubkey: receiverWR, isSigner: false, isWritable: true },
+            { pubkey: curvePDA, isSigner: false, isWritable: false },
+            { pubkey: SKYE_LADDER_ID, isSigner: false, isWritable: false },
+            { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
+          ],
+          programId: SKYE_CURVE_ID,
+          data: swapData,
+        }));
+
+        const tx3 = new Transaction().add(...buyIxs);
+        tx3.feePayer = publicKey;
+        tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+        const sig3 = await sendTransaction(tx3, connection);
+        await connection.confirmTransaction(sig3, "confirmed");
       }
 
+      // Store token metadata locally
       storeToken({
-        mint: mint.toBase58(), name, symbol, image: localImageUri, description,
+        mint: mint.toBase58(), name, symbol, image: imageDataUri, description,
         website, twitter, telegram, discord,
         curve: curvePDA.toBase58(), creator: publicKey.toBase58(),
         launchedAt: Math.floor(Date.now() / 1000),
       });
 
-      setStep(5);
+      setStep(4);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
 
     } catch (e: any) {
@@ -207,8 +253,8 @@ export function LaunchTab() {
     }
   }
 
-  const stepLabels = ["", "Creating token + hook...", "Uploading metadata to Arweave...", "Setting up bonding curve...", "Transferring supply...", "Done!"];
-  const isLaunching = step > 0 && step < 5;
+  const stepLabels = ["", "Creating token + hook...", "Setting up bonding curve...", "Buying initial position...", "Done!"];
+  const isLaunching = step > 0 && step < 4;
 
   return (
     <div className="space-y-6">
@@ -294,6 +340,18 @@ export function LaunchTab() {
           </div>
         </div>
 
+        {/* Initial buy */}
+        <div>
+          <label className="text-[12px] font-medium text-ink-tertiary mb-1 block">Initial Buy <span className="text-ink-faint">(optional, max 2 SOL)</span></label>
+          <div className="relative">
+            <input type="number" placeholder="0.0" value={initialBuySol} onChange={e => setInitialBuySol(e.target.value)} disabled={isLaunching}
+              max="2" step="0.1"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-14 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[44px]" />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-ink-faint">SOL</span>
+          </div>
+          <p className="text-[10px] text-ink-faint mt-1">Buy in at launch — keeps the chart from being empty</p>
+        </div>
+
         {/* Info */}
         <div className="grid grid-cols-3 gap-2 text-[11px]">
           <div className="bg-white/3 rounded-lg px-3 py-2 border border-white/5"><span className="text-ink-faint">Restrictions</span><p className="text-skye-400 font-semibold mt-0.5">5-Phase</p></div>
@@ -309,9 +367,9 @@ export function LaunchTab() {
               <span className="font-pixel text-[9px] text-skye-400">{stepLabels[step]}</span>
             </div>
             <div className="flex gap-1">
-              {[1,2,3,4].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
+              {[1,2,3].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
             </div>
-            <p className="text-[11px] text-ink-faint">Step {step} of 4{step === 2 ? "" : " — approve in wallet"}</p>
+            <p className="text-[11px] text-ink-faint">Approve in wallet</p>
           </div>
         )}
 
