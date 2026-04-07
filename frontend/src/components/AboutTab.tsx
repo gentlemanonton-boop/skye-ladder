@@ -81,7 +81,9 @@ export function AboutTab() {
         <div className="flex justify-center gap-6">
           <a href="https://github.com/gentlemanonton-boop/skye-ladder" target="_blank" rel="noopener noreferrer"
             className="text-[13px] text-skye-400 hover:underline font-semibold">GitHub</a>
-          <a href="https://solscan.io/token/4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j" target="_blank" rel="noopener noreferrer"
+          <a href="https://x.com/Skyefallgg" target="_blank" rel="noopener noreferrer"
+            className="text-[13px] text-skye-400 hover:underline font-semibold">X</a>
+          <a href="https://solscan.io/token/5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF" target="_blank" rel="noopener noreferrer"
             className="text-[13px] text-skye-400 hover:underline font-semibold">Solscan</a>
         </div>
       </div>
