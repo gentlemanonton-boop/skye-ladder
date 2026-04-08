@@ -31,9 +31,11 @@ input[type="number"]::placeholder { color: rgba(255,255,255,0.25); }
 /* ── Glassmorphism card ──
    Background opacity 0.92 — cards are nearly solid (only 8% see-through)
    so the bg image doesn't bleed through and reduce text legibility. The
-   backdrop-filter blur is kept for the small visible portion at the edges. */
+   backdrop-filter blur is kept for the small visible portion at the edges.
+   Tone is a slightly-blueish dark gray (22, 22, 26) — less midnight-blue
+   than the original (10, 10, 20). */
 .glass {
-  background: rgba(10, 10, 20, 0.92);
+  background: rgba(22, 22, 26, 0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
