@@ -167,20 +167,29 @@ pub fn handler<'info>(
             tokens_in,
             curve.fee_bps,
         )?;
-        // Treasury takes 50% of the fee
-        let treasury_fee = fee / 2;
-        let sol_out_to_user = sol_out.saturating_sub(treasury_fee);
-        require!(sol_out_to_user >= min_out, SkyeCurveError::SlippageExceeded);
-        // Total leaving the curve = sol_out_to_user + treasury_fee = sol_out
-        require!(sol_out <= curve.real_sol_reserve, SkyeCurveError::InsufficientLiquidity);
 
-        // Update curve state
+        // Apply the 50/50 treasury/pool split. `compute_sell` already returns
+        // `sol_out` net of the full `fee`; this helper captures the policy
+        // that the user receives the full `sol_out`, the treasury receives
+        // `fee/2`, and the remaining `fee/2` stays in the curve reserves.
+        //
+        // (Earlier this branch did `sol_out - treasury_fee`, which silently
+        //  charged sellers ~1.5 × fee_bps. See math::split_sell_output for
+        //  the full history.)
+        let (sol_out_to_user, treasury_fee, reserve_decrement) =
+            math::split_sell_output(sol_out, fee)?;
+        require!(sol_out_to_user >= min_out, SkyeCurveError::SlippageExceeded);
+        require!(reserve_decrement <= curve.real_sol_reserve, SkyeCurveError::InsufficientLiquidity);
+
+        // Update curve state — reserves drop by what actually leaves the
+        // sol_reserve ATA, which is user + treasury. The pool keeps the
+        // remaining fee/2 because we decrement by less than `sol_out_raw`.
         let curve = &mut ctx.accounts.curve;
-        curve.virtual_sol_reserve = curve.virtual_sol_reserve.checked_sub(sol_out)
+        curve.virtual_sol_reserve = curve.virtual_sol_reserve.checked_sub(reserve_decrement)
             .ok_or(SkyeCurveError::MathOverflow)?;
         curve.virtual_token_reserve = curve.virtual_token_reserve.checked_add(tokens_in)
             .ok_or(SkyeCurveError::MathOverflow)?;
-        curve.real_sol_reserve = curve.real_sol_reserve.checked_sub(sol_out)
+        curve.real_sol_reserve = curve.real_sol_reserve.checked_sub(reserve_decrement)
             .ok_or(SkyeCurveError::MathOverflow)?;
         curve.real_token_reserve = curve.real_token_reserve.checked_add(tokens_in)
             .ok_or(SkyeCurveError::MathOverflow)?;

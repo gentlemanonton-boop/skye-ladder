@@ -71,6 +71,35 @@ pub fn compute_sell(
     Ok((sol_out as u64, fee as u64))
 }
 
+/// Apply the 50/50 treasury/pool split to a sell output.
+///
+/// Given the values returned from `compute_sell`:
+///   - `sol_out` = `sol_out_raw - fee` (already net of the FULL fee)
+///   - `fee`     = the fee that was deducted from `sol_out_raw`
+///
+/// Returns `(user_amount, treasury_amount, reserve_decrement)` where:
+///   - `user_amount`       = what the seller receives (the FULL `sol_out`)
+///   - `treasury_amount`   = `fee / 2` (the treasury's half of the fee)
+///   - `reserve_decrement` = `user_amount + treasury_amount` (what actually
+///                            leaves the curve's `sol_reserve` ATA)
+///
+/// The remaining `fee - treasury_amount = fee/2` stays inside the curve
+/// reserves — that is the "pool's half" of the fee. This is what the comment
+/// `// Treasury takes 50% of the fee` in `swap.rs` was always meant to do.
+///
+/// HISTORY: an earlier version of `swap.rs` mistakenly subtracted
+/// `treasury_fee` from `sol_out` directly, which charged sellers ~1.5×
+/// `fee_bps` instead of `fee_bps`. This helper exists so the splitting policy
+/// is captured in one testable place and can never silently drift again.
+pub fn split_sell_output(sol_out: u64, fee: u64) -> Result<(u64, u64, u64)> {
+    let treasury_amount = fee / 2;
+    let user_amount = sol_out;
+    let reserve_decrement = user_amount
+        .checked_add(treasury_amount)
+        .ok_or(SkyeCurveError::MathOverflow)?;
+    Ok((user_amount, treasury_amount, reserve_decrement))
+}
+
 /// Compute initial virtual reserves for a target initial market cap.
 ///
 /// initial_price = virtual_sol / virtual_token
@@ -123,6 +152,83 @@ mod tests {
 
         // Should get back ~1 SOL (minus rounding)
         assert!(sol_back >= 999_999_000 && sol_back <= 1_000_000_001, "Got {}", sol_back);
+    }
+
+    // ── split_sell_output (treasury/pool fee split) ──────────────────────
+    //
+    // These tests pin the on-chain user-receive formula for sells.
+    // If anyone changes the splitting policy in `swap.rs`, these tests
+    // will fail loudly. The frontend's `computeCurveSellOutput` mirrors
+    // the same formula and must be updated in lockstep.
+
+    #[test]
+    fn test_split_sell_output_basic_1pct_fee() {
+        // 1 SOL gross output, 1% fee → fee = 0.01 SOL, treasury gets 0.005,
+        // user gets the full 0.99 SOL back, reserves drop by 0.995.
+        let sol_out_raw = 1_000_000_000u64; // 1 SOL
+        let fee = sol_out_raw * 100 / 10_000; // 1% = 10_000_000
+        let sol_out = sol_out_raw - fee;       // 990_000_000
+        let (user, treasury, decrement) = split_sell_output(sol_out, fee).unwrap();
+        assert_eq!(user, 990_000_000, "user receives full sol_out (no double fee)");
+        assert_eq!(treasury, 5_000_000, "treasury gets fee/2");
+        assert_eq!(decrement, 995_000_000, "reserves drop by user + treasury");
+        // Pool retains the other fee/2:
+        assert_eq!(sol_out_raw - decrement, 5_000_000);
+    }
+
+    #[test]
+    fn test_split_sell_output_user_pays_exactly_fee_bps() {
+        // Confirm user pays exactly fee_bps (1%), NOT 1.5%.
+        // sol_out_raw - user_amount should equal `fee` (the full 1%).
+        let sol_out_raw = 30_000_000_000u64; // 30 SOL
+        let fee = sol_out_raw * 100 / 10_000; // 1% = 300_000_000
+        let sol_out = sol_out_raw - fee;
+        let (user, _, _) = split_sell_output(sol_out, fee).unwrap();
+        let user_loss = sol_out_raw - user;
+        assert_eq!(user_loss, fee, "user pays exactly fee_bps, not 1.5×");
+    }
+
+    #[test]
+    fn test_split_sell_output_zero_fee() {
+        // No fee → user gets everything, treasury gets nothing.
+        let (user, treasury, decrement) = split_sell_output(1_000_000_000, 0).unwrap();
+        assert_eq!(user, 1_000_000_000);
+        assert_eq!(treasury, 0);
+        assert_eq!(decrement, 1_000_000_000);
+    }
+
+    #[test]
+    fn test_split_sell_output_odd_fee_rounds_down() {
+        // Odd fee → integer division floors, treasury gets one less than half.
+        let sol_out = 999u64;
+        let fee = 7u64;
+        let (user, treasury, decrement) = split_sell_output(sol_out, fee).unwrap();
+        assert_eq!(user, 999);
+        assert_eq!(treasury, 3); // 7 / 2 = 3, not 3.5
+        assert_eq!(decrement, 1002);
+    }
+
+    #[test]
+    fn test_split_sell_output_full_pipeline_via_compute_sell() {
+        // End-to-end: run compute_sell, then split, and verify the user
+        // receives exactly fee_bps less than sol_out_raw (computed manually).
+        let v_sol = 30_000_000_000u64;
+        let v_token = 1_000_000_000_000_000_000u64;
+        let tokens_in = 1_000_000_000_000_000u64; // 1M whole tokens
+
+        // Manual sol_out_raw (no fee)
+        let sol_out_raw_manual = (tokens_in as u128) * (v_sol as u128)
+            / ((v_token as u128) + (tokens_in as u128));
+
+        let (sol_out, fee) = compute_sell(v_sol, v_token, tokens_in, 100).unwrap();
+        let (user, treasury, decrement) = split_sell_output(sol_out, fee).unwrap();
+
+        // User loses exactly fee (= 1% of raw), not 1.5×
+        assert_eq!(sol_out_raw_manual as u64 - user, fee);
+        // Reserves drop by raw - fee/2
+        assert_eq!(sol_out_raw_manual as u64 - decrement, fee / 2);
+        // Treasury gets fee/2
+        assert_eq!(treasury, fee / 2);
     }
 
     #[test]
