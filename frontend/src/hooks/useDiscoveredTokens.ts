@@ -62,8 +62,9 @@ const DEAD_MINTS = new Set([
   "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL (no on-chain metadata)
 ]);
 
-const REFRESH_TTL_MS = 30_000;       // background refresh after this
-const SIG_LIMIT = 50;                // signatures of curve program to walk
+const REFRESH_TTL_MS = 30_000;       // in-memory token cache: background refresh after this
+const SIG_LIMIT = 15;                // signatures to walk on a cold mint cache (was 50)
+const MINT_CACHE_KEY = "skye_discovered_mints_v1";
 
 // ── Module-level cache + subscriber bus ─────────────────────────────────
 let cache: { tokens: DiscoveredTokenBase[]; ts: number } | null = null;
@@ -76,29 +77,82 @@ function notifyAll(tokens: DiscoveredTokenBase[]) {
   }
 }
 
-async function doFetch(connection: Connection): Promise<DiscoveredTokenBase[]> {
-  const stored = getStoredTokens();
+// ── Mint list persistence (separate from in-memory token cache) ─────────
+//
+// The slow part of the fetch is walking recent program signatures to find
+// new mints. We persist the discovered mints in localStorage so visits
+// after the first one can skip that walk entirely and only do a single
+// getMultipleAccountsInfo call (~300ms instead of ~3s).
+//
+// Convergence: once any browser sees a mint, it's cached forever for
+// that browser. Different browsers eventually converge on the full set
+// after a few visits as the background refresh adds new mints.
 
-  // 1) Walk recent curve-program signatures and pull the launches out of
-  //    the log messages. This is the same approach both tabs used before.
+function loadMintCache(): string[] {
+  try {
+    const raw = localStorage.getItem(MINT_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+function saveMintCache(mints: string[]) {
+  try { localStorage.setItem(MINT_CACHE_KEY, JSON.stringify(mints)); } catch {}
+}
+
+// Walk a small window of recent curve program signatures, parse the launch
+// logs, return any new mints. This is the slow part — we only do it when
+// the persistent cache is empty, or in the background to refresh it.
+async function discoverNewMints(connection: Connection): Promise<string[]> {
   const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: SIG_LIMIT });
   const txResults = await Promise.allSettled(
     sigs.map(s => connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 }))
   );
-
-  const onChainMints: string[] = [];
+  const found: string[] = [];
   for (const result of txResults) {
     if (result.status !== "fulfilled" || !result.value?.meta?.logMessages) continue;
     const launchedLog = result.value.meta.logMessages.find(l => l.includes("Token launched:"));
     if (!launchedLog) continue;
     const m = launchedLog.match(/mint=([A-Za-z0-9]+)/);
-    if (m && !DEAD_MINTS.has(m[1])) onChainMints.push(m[1]);
+    if (m && !DEAD_MINTS.has(m[1])) found.push(m[1]);
+  }
+  return found;
+}
+
+async function doFetch(connection: Connection): Promise<DiscoveredTokenBase[]> {
+  const stored = getStoredTokens();
+  const cachedMints = loadMintCache();
+
+  // Build the candidate mint list from three sources:
+  //   1. Persisted mint cache (the fast path — no RPC call needed)
+  //   2. The launching browser's localStorage (for tokens this browser
+  //      launched but hasn't fully synced yet)
+  //   3. SKYE itself (always present in the World view)
+  //
+  // If the persisted cache is empty, we walk signatures synchronously.
+  // Otherwise we kick off the discovery walk in the background and merge
+  // any newly found mints into the cache for next time.
+  let onChainMints: string[];
+  if (cachedMints.length === 0) {
+    // Cold cache: do the slow walk inline
+    onChainMints = await discoverNewMints(connection);
+    saveMintCache(onChainMints);
+  } else {
+    // Warm cache: use it now, kick off a background refresh
+    onChainMints = cachedMints;
+    // fire-and-forget — updates the cache so the NEXT visit catches new launches
+    discoverNewMints(connection).then(fresh => {
+      const merged = [...new Set([...cachedMints, ...fresh])];
+      if (merged.length !== cachedMints.length) {
+        saveMintCache(merged);
+        // If new mints were discovered, kick the in-memory cache to refetch
+        // so the user sees them within ~30s without a manual refresh.
+        cache = null;
+      }
+    }).catch(() => {});
   }
 
-  // 2) Combine on-chain launches with anything in this browser's local
-  //    launchStore (so the launching browser sees its own tokens even if
-  //    they fall off the recent-50 signature window). Always include SKYE
-  //    so the World view has the official coin.
   const allMints = [
     ...new Set([SKYE_MINT.toBase58(), ...stored.map(s => s.mint), ...onChainMints]),
   ].filter(m => !DEAD_MINTS.has(m));
