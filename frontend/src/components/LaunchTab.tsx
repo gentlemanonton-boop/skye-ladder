@@ -7,8 +7,7 @@ import {
   TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, NATIVE_MINT,
   ExtensionType, createInitializeMintInstruction, createInitializeTransferHookInstruction,
   createAssociatedTokenAccountInstruction, createMintToInstruction,
-  createTransferCheckedWithTransferHookInstruction, createSyncNativeInstruction,
-  createCloseAccountInstruction,
+  createSyncNativeInstruction,
   getMintLen, getAssociatedTokenAddressSync, ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
@@ -77,7 +76,10 @@ export function LaunchTab() {
       );
       const ladderProgram = new Program(ladderIdl as any, provider);
 
-      // Convert image to data URI immediately (no Arweave, no extra approvals)
+      // Local data URI for the launching browser's localStorage cache so the
+      // creator sees their image instantly without waiting on the Arweave
+      // gateway. The on-chain Metaplex metadata (created in TX 2 below) is
+      // what every other device reads.
       let imageDataUri = "";
       if (imageFile) {
         const bytes = new Uint8Array(await imageFile.arrayBuffer());
@@ -86,8 +88,11 @@ export function LaunchTab() {
         imageDataUri = `data:${imageFile.type};base64,${btoa(binary)}`;
       }
 
-      // Derive all PDAs
-      const creatorATA = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+      // Derive all PDAs. NOTE: no creator ATA — we mint the supply directly
+      // into the curve's token reserve, skipping the round trip through the
+      // launcher's wallet entirely. That eliminates the pause/transfer/unpause
+      // dance the old flow needed (a Token-2022 hook fires on transfer, not
+      // on mint_to).
       const [configPDA] = PublicKey.findProgramAddressSync([Buffer.from("config"), mint.toBuffer()], SKYE_LADDER_ID);
       const [extraMetasPDA] = PublicKey.findProgramAddressSync([Buffer.from("extra-account-metas"), mint.toBuffer()], SKYE_LADDER_ID);
       const [curvePDA] = PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], SKYE_CURVE_ID);
@@ -97,7 +102,23 @@ export function LaunchTab() {
       const [curveWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), curvePDA.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
 
       // ══════════════════════════════════════════════════
-      // TX 1: Create mint + supply + init hook (1 approval)
+      // TX 1: Launch token (1 approval)
+      //
+      // Single transaction that does ALL of the following:
+      //   1. Pay the launch fee
+      //   2. Create the Token-2022 mint with TransferHook extension
+      //   3. Initialize the mint
+      //   4. Initialize the Skye Ladder hook config + extra-account-metas PDA
+      //   5. Create the curve's token reserve ATA (owner = curve PDA)
+      //   6. Create the curve's WSOL reserve ATA  (owner = curve PDA)
+      //   7. Mint full supply DIRECTLY into the curve token reserve
+      //   8. Create the curve account (skye-curve launch_token)
+      //   9. Create the curve's wallet record (skye-ladder)
+      //
+      // The instruction order matters: createATA must happen before mintTo
+      // (mintTo's destination must already exist), and `initialize` must
+      // happen after `initializeMint` (Anchor deserializes the mint as an
+      // InterfaceAccount).
       // ══════════════════════════════════════════════════
       setStep(1);
 
@@ -110,42 +131,14 @@ export function LaunchTab() {
         .accounts({ authority: publicKey, mint, config: configPDA, extraAccountMetaList: extraMetasPDA, systemProgram: SystemProgram.programId })
         .instruction();
 
-      const tx1 = new Transaction().add(
-        SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: TREASURY_WALLET, lamports: LAUNCH_FEE_LAMPORTS }),
-        SystemProgram.createAccount({
-          fromPubkey: publicKey, newAccountPubkey: mint,
-          space: mintLen, lamports: mintLamports, programId: TOKEN_2022_PROGRAM_ID,
-        }),
-        createInitializeTransferHookInstruction(mint, publicKey, SKYE_LADDER_ID, TOKEN_2022_PROGRAM_ID),
-        createInitializeMintInstruction(mint, DECIMALS, publicKey, null, TOKEN_2022_PROGRAM_ID),
-        createAssociatedTokenAccountInstruction(publicKey, creatorATA, publicKey, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
-        createMintToInstruction(mint, creatorATA, publicKey, supplyRaw, [], TOKEN_2022_PROGRAM_ID),
-        initIx,
-      );
-      tx1.feePayer = publicKey;
-      tx1.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      tx1.partialSign(mintKeypair);
-      const sig1 = await sendTransaction(tx1, connection);
-      await connection.confirmTransaction(sig1, "confirmed");
-
-      // ══════════════════════════════════════════════════
-      // TX 2: Curve setup + supply transfer (1 approval, combined)
-      // ══════════════════════════════════════════════════
-      setStep(2);
-
       const launchData = Buffer.alloc(8 + 8 + 8 + 2);
       launchData.set(LAUNCH_DISC, 0);
       launchData.writeBigUInt64LE(supplyRaw, 8);
       launchData.writeBigUInt64LE(BigInt(INITIAL_VIRTUAL_SOL), 16);
       launchData.writeUInt16LE(100, 24);
 
-      const wrIx = await (ladderProgram.methods as any).createWalletRecord()
-        .accounts({ payer: publicKey, wallet: curvePDA, mint, walletRecord: curveWR, systemProgram: SystemProgram.programId }).instruction();
-
-      const tx2 = new Transaction().add(
-        createAssociatedTokenAccountInstruction(publicKey, tokenReserve, curvePDA, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
-        createAssociatedTokenAccountInstruction(publicKey, solReserve, curvePDA, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
-        { keys: [
+      const launchTokenIx = {
+        keys: [
           { pubkey: publicKey, isSigner: true, isWritable: true },
           { pubkey: mint, isSigner: false, isWritable: false },
           { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
@@ -157,43 +150,44 @@ export function LaunchTab() {
           { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
           { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ], programId: SKYE_CURVE_ID, data: launchData },
+        ],
+        programId: SKYE_CURVE_ID,
+        data: launchData,
+      };
+
+      const wrIx = await (ladderProgram.methods as any).createWalletRecord()
+        .accounts({ payer: publicKey, wallet: curvePDA, mint, walletRecord: curveWR, systemProgram: SystemProgram.programId }).instruction();
+
+      const tx1 = new Transaction().add(
+        SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: TREASURY_WALLET, lamports: LAUNCH_FEE_LAMPORTS }),
+        SystemProgram.createAccount({
+          fromPubkey: publicKey, newAccountPubkey: mint,
+          space: mintLen, lamports: mintLamports, programId: TOKEN_2022_PROGRAM_ID,
+        }),
+        createInitializeTransferHookInstruction(mint, publicKey, SKYE_LADDER_ID, TOKEN_2022_PROGRAM_ID),
+        createInitializeMintInstruction(mint, DECIMALS, publicKey, null, TOKEN_2022_PROGRAM_ID),
+        initIx,
+        createAssociatedTokenAccountInstruction(publicKey, tokenReserve, curvePDA, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
+        createAssociatedTokenAccountInstruction(publicKey, solReserve, curvePDA, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
+        createMintToInstruction(mint, tokenReserve, publicKey, supplyRaw, [], TOKEN_2022_PROGRAM_ID),
+        launchTokenIx,
         wrIx,
       );
-      tx2.feePayer = publicKey;
-      tx2.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      const sig2 = await sendTransaction(tx2, connection);
-      await connection.confirmTransaction(sig2, "confirmed");
+      tx1.feePayer = publicKey;
+      tx1.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      tx1.partialSign(mintKeypair);
+      const sig1 = await sendTransaction(tx1, connection);
+      await connection.confirmTransaction(sig1, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // TX 3: Pause hook + transfer supply with hook accounts + close creator ATA + unpause
-      // (separate tx because createTransferCheckedWithTransferHookInstruction needs the
-      // curve to exist on-chain to resolve hook accounts)
+      // TX 2: Upload image + JSON to Arweave + Metaplex createV1 (1 approval)
+      //
+      // Wrapped in try/catch — a metadata failure does not abort an otherwise
+      // successful launch. The launching user still sees the image via the
+      // localStorage cache (storeToken below), and the upload can be retried
+      // later via scripts/backfill-metadata.ts.
       // ══════════════════════════════════════════════════
-      setStep(3);
-
-      const pauseIx = await (ladderProgram.methods as any).setPaused(true).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
-      const transferWithHookIx = await createTransferCheckedWithTransferHookInstruction(
-        connection, creatorATA, mint, tokenReserve, publicKey, supplyRaw, DECIMALS, [], "confirmed", TOKEN_2022_PROGRAM_ID
-      );
-      const closeCreatorAtaIx = createCloseAccountInstruction(creatorATA, publicKey, publicKey, [], TOKEN_2022_PROGRAM_ID);
-      const unpauseIx = await (ladderProgram.methods as any).setPaused(false).accounts({ authority: publicKey, mint, config: configPDA }).instruction();
-
-      const tx3 = new Transaction().add(pauseIx, transferWithHookIx, closeCreatorAtaIx, unpauseIx);
-      tx3.feePayer = publicKey;
-      tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-      const sig3 = await sendTransaction(tx3, connection);
-      await connection.confirmTransaction(sig3, "confirmed");
-
-      // ══════════════════════════════════════════════════
-      // TX 4: Upload image + JSON to Arweave + create Metaplex metadata.
-      // This is what makes the token's image visible to anyone who wasn't the
-      // launching browser — without this, image only lives in localStorage.
-      // Failure here is non-fatal: the token still works, the launching user
-      // still sees the image via storeToken below, and the upload can be
-      // retried later.
-      // ══════════════════════════════════════════════════
-      setStep(4);
+      setStep(2);
       try {
         if (wallet.wallet?.adapter) {
           await uploadAndCreateMetadata({
@@ -208,10 +202,13 @@ export function LaunchTab() {
       }
 
       // ══════════════════════════════════════════════════
-      // TX 5 (OPTIONAL): Initial buy
+      // TX 3 (OPTIONAL): Initial buy (1 approval)
       // ══════════════════════════════════════════════════
       if (initialBuySolNum > 0) {
-        setStep(5);
+        setStep(3);
+        // The launching wallet has no token ATA yet — TX 1 minted the supply
+        // straight to the curve, so we create the creator's ATA fresh here.
+        const creatorATA = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const [buyerWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
@@ -220,7 +217,8 @@ export function LaunchTab() {
         const buyerWRInfo = await connection.getAccountInfo(buyerWR);
 
         const buyIxs: TransactionInstruction[] = [];
-        // Recreate creator's token ATA (closed in TX3)
+        // The creator never had a token ATA in the new flow (supply went straight
+        // to the curve), so we always create one fresh here.
         buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, creatorATA, publicKey, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
         if (!wsolInfo) buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
         if (!buyerWRInfo) {
@@ -282,7 +280,7 @@ export function LaunchTab() {
         launchedAt: Math.floor(Date.now() / 1000),
       });
 
-      setStep(6);
+      setStep(4);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
 
     } catch (e: any) {
@@ -292,8 +290,8 @@ export function LaunchTab() {
     }
   }
 
-  const stepLabels = ["", "Creating token + hook...", "Setting up bonding curve...", "Transferring supply...", "Uploading metadata to Arweave...", "Buying initial position...", "Done!"];
-  const isLaunching = step > 0 && step < 6;
+  const stepLabels = ["", "Launching token...", "Uploading metadata to Arweave...", "Buying initial position...", "Done!"];
+  const isLaunching = step > 0 && step < 4;
 
   return (
     <div className="space-y-6">
@@ -406,7 +404,7 @@ export function LaunchTab() {
               <span className="font-pixel text-[9px] text-skye-400">{stepLabels[step]}</span>
             </div>
             <div className="flex gap-1">
-              {[1,2,3,4].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
+              {[1,2].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
             </div>
             <p className="text-[11px] text-ink-faint">Approve in wallet</p>
           </div>
