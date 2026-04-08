@@ -16,6 +16,11 @@ export interface PricePoint {
   price: number;
 }
 
+export interface PriceHistoryState {
+  history: PricePoint[];
+  loading: boolean;
+}
+
 // Why no localStorage anymore:
 //
 // The previous version cached points in localStorage per browser. That meant
@@ -32,13 +37,27 @@ export interface PricePoint {
 //
 // Result: every visitor sees the same chart on first load, and live updates
 // continue to flow in via the curve account subscription.
+//
+// Tuning:
+//   - HISTORY_LIMIT is small (50). Each entry costs one getTransaction call,
+//     which on the public RPC is ~50–200ms each plus rate limits. 50 entries
+//     gives ~10s of load time worst case and a useful recent chart. We don't
+//     need a multi-day chart on first load — the live subscription extends
+//     it from there.
+//   - BATCH is small (10) so we don't fan out so wide that the RPC starts
+//     dropping requests. Public Solana RPC throttles aggressively above ~25
+//     concurrent.
+//   - After each batch we publish a partial update so the user sees the
+//     chart filling in instead of staring at a "LOADING" state for the
+//     whole window.
 
-const HISTORY_LIMIT = 500; // recent signatures to walk back through
-const BATCH = 25;
+const HISTORY_LIMIT = 50;
+const BATCH = 10;
 
-export function usePriceHistory() {
+export function usePriceHistory(): PriceHistoryState {
   const { connection } = useConnection();
   const [history, setHistory] = useState<PricePoint[]>([]);
+  const [loading, setLoading] = useState(true);
   const ref = useRef(history);
   ref.current = history;
 
@@ -73,30 +92,51 @@ export function usePriceHistory() {
       setHistory(next);
     }
 
+    function publishPoints(newPoints: PricePoint[]) {
+      // Merge with anything already in state, dedupe by second, sort.
+      const seen = new Map<number, number>();
+      for (const p of ref.current) seen.set(p.time, p.price);
+      for (const p of newPoints) seen.set(p.time, p.price);
+      const merged = [...seen.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([time, price]) => ({ time, price }));
+      ref.current = merged;
+      setHistory(merged);
+    }
+
     async function backfill() {
       try {
-        // 1) Read current curve to derive the constant offset between
-        //    virtual_sol_reserve (curve account field) and real_sol_reserve
-        //    (the actual WSOL balance in the curve's WSOL ATA). The
-        //    difference is INITIAL_VIRTUAL_SOL, set once at launch and
-        //    never changed.
+        // 1) Read current curve to derive (a) initialVirtualSol and (b) a
+        //    seed point so the chart never starts blank.
         const curveInfo = await connection.getAccountInfo(curvePDA);
-        if (cancelled || !curveInfo || curveInfo.data.length < 192) return;
+        if (cancelled || !curveInfo || curveInfo.data.length < 192) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
         const currentVirtualSol = Number(curveInfo.data.readBigUInt64LE(176));
+        const currentVirtualToken = Number(curveInfo.data.readBigUInt64LE(168));
         const currentRealSol = Number(curveInfo.data.readBigUInt64LE(184));
         const initialVirtualSol = currentVirtualSol - currentRealSol;
 
-        // 2) Fetch recent signatures of the curve PDA. Anything that
-        //    mutates the curve (buy/sell/launch/graduate) shows up here.
+        // Seed with the current price as a single point, anchored to "now".
+        // This is replaced/extended once the historical sigs land, but it
+        // means the loading screen flips to "have data" immediately.
+        if (currentVirtualToken > 0) {
+          publishPoints([{
+            time: Math.floor(Date.now() / 1000),
+            price: currentVirtualSol / currentVirtualToken,
+          }]);
+        }
+
+        // 2) Fetch recent signatures of the curve PDA.
         const sigs = await connection.getSignaturesForAddress(curvePDA, { limit: HISTORY_LIMIT });
         if (cancelled) return;
         // Reverse so we walk chronologically (oldest -> newest).
         const sigsChronological = [...sigs].reverse();
 
-        const points: PricePoint[] = [];
-
-        // 3) Pull transactions in batches via Promise.all so we don't wait
-        //    serially. Public RPC will rate-limit if we go too wide.
+        // 3) Pull transactions in small batches and publish partial updates
+        //    after each batch. The user sees the chart filling in instead
+        //    of waiting on a frozen loader.
         for (let i = 0; i < sigsChronological.length; i += BATCH) {
           if (cancelled) return;
           const batch = sigsChronological.slice(i, i + BATCH);
@@ -108,34 +148,42 @@ export function usePriceHistory() {
           );
           if (cancelled) return;
 
+          const batchPoints: PricePoint[] = [];
           for (let j = 0; j < txs.length; j++) {
             const tx = txs[j];
             if (!tx?.meta) continue;
-            // Skip failed txs — they didn't change state.
             if (tx.meta.err) continue;
 
             const blockTime = tx.blockTime ?? batch[j].blockTime;
             if (!blockTime) continue;
 
-            // 4) Find the post-balances for the curve's two reserves.
-            //    `postTokenBalances` entries reference accounts by index
-            //    into the tx's account-keys list, so we resolve via the
-            //    message helper that handles legacy + v0 + lookup tables.
-            const accountKeysObj = (tx.transaction.message as any).getAccountKeys?.({
-              accountKeysFromLookups: tx.meta.loadedAddresses,
-            });
-            const allKeys: PublicKey[] = accountKeysObj
-              ? [
-                  ...accountKeysObj.staticAccountKeys,
-                  ...(accountKeysObj.accountKeysFromLookups?.writable ?? []),
-                  ...(accountKeysObj.accountKeysFromLookups?.readonly ?? []),
-                ]
-              : ((tx.transaction.message as any).accountKeys ?? []);
+            // Resolve account-key list. v0 messages need getAccountKeys();
+            // legacy messages have a plain accountKeys array. We try the
+            // method first then fall back to the array.
+            const msg = tx.transaction.message as any;
+            let allKeys: PublicKey[] | undefined;
+            try {
+              if (typeof msg.getAccountKeys === "function") {
+                const keysObj = msg.getAccountKeys({ accountKeysFromLookups: tx.meta.loadedAddresses });
+                allKeys = [
+                  ...keysObj.staticAccountKeys,
+                  ...(keysObj.accountKeysFromLookups?.writable ?? []),
+                  ...(keysObj.accountKeysFromLookups?.readonly ?? []),
+                ];
+              }
+            } catch {
+              // fall through
+            }
+            if (!allKeys && Array.isArray(msg.accountKeys)) {
+              allKeys = msg.accountKeys;
+            }
+            if (!allKeys) continue;
 
             let realSol: number | null = null;
             let realToken: number | null = null;
             for (const tb of tx.meta.postTokenBalances ?? []) {
-              const addr = allKeys[tb.accountIndex]?.toBase58?.();
+              const key = allKeys[tb.accountIndex];
+              const addr = key?.toBase58?.();
               if (!addr) continue;
               if (addr === wsolReserveStr) realSol = Number(tb.uiTokenAmount.amount);
               else if (addr === tokenReserveStr) realToken = Number(tb.uiTokenAmount.amount);
@@ -144,38 +192,24 @@ export function usePriceHistory() {
             if (realSol !== null && realToken !== null && realToken > 0) {
               const virtualSol = realSol + initialVirtualSol;
               const price = virtualSol / realToken;
-              points.push({ time: blockTime, price });
+              batchPoints.push({ time: blockTime, price });
             }
           }
+
+          if (batchPoints.length > 0) publishPoints(batchPoints);
         }
-
-        if (cancelled) return;
-
-        // De-dup by second (multiple ixs in the same block share blockTime).
-        // Keep the latest within each second.
-        const dedup = new Map<number, number>();
-        for (const p of points) dedup.set(p.time, p.price);
-        const sorted = [...dedup.entries()]
-          .sort((a, b) => a[0] - b[0])
-          .map(([time, price]) => ({ time, price }));
-
-        // Merge with anything the live subscription has already pushed in
-        // (the subscription may fire while backfill is still running).
-        const liveTail = ref.current.filter(p =>
-          sorted.length === 0 || p.time > sorted[sorted.length - 1].time
-        );
-        const merged = [...sorted, ...liveTail];
-
-        ref.current = merged;
-        setHistory(merged);
       } catch (err) {
         console.error("Failed to backfill price history:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
 
     backfill();
 
-    // Live subscription for new trades after backfill completes.
+    // Live subscription for new trades after backfill completes (or runs in
+    // parallel with it — `appendLive` only adds points newer than what
+    // backfill produces).
     const sub = connection.onAccountChange(curvePDA, (info) => {
       const p = readPriceFromCurveData(info.data as Buffer);
       if (p) appendLive(p);
@@ -187,5 +221,5 @@ export function usePriceHistory() {
     };
   }, [connection]);
 
-  return history;
+  return { history, loading };
 }

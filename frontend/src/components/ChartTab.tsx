@@ -21,7 +21,7 @@ function bucket(pts: PricePoint[], sec: number): PricePoint[] {
 }
 
 export function ChartTab() {
-  const history = usePriceHistory();
+  const { history, loading } = usePriceHistory();
   const solUsd = useSolPrice();
   const [tf, setTf] = useState<TF>("5m");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,8 +114,12 @@ export function ChartTab() {
         {history.length < 2 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center space-y-2">
-              <p className="font-pixel text-[8px] text-skye-400 animate-pulse">LOADING PRICE DATA</p>
-              <p className="text-[11px] text-ink-faint">Chart fills as trades happen</p>
+              <p className="font-pixel text-[8px] text-skye-400 animate-pulse">
+                {loading ? "LOADING CHART HISTORY" : "WAITING FOR FIRST TRADE"}
+              </p>
+              <p className="text-[11px] text-ink-faint">
+                {loading ? "Reading recent trades from chain..." : "Chart fills as trades happen"}
+              </p>
             </div>
           </div>
         )}
