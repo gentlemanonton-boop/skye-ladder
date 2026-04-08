@@ -70,7 +70,8 @@ export function WorldTab() {
           "HREtu5WXuKJP1L23shpNTP3U4Xtmfekv82Lyuq1vMrsd",
           "5BJcCPdZbxBMhodSZxUMowHSNY38dqhiRgSxDw8uLqZ1",
           "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
-          "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL — hidden everywhere
+          "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL (original test) — hidden everywhere
+          "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL (no on-chain metadata) — abandoned, will relaunch
         ]);
 
         const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: 50 });

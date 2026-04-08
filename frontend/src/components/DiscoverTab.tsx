@@ -24,7 +24,8 @@ const EXCLUDED_MINTS = new Set([
   "5BJcCPdZbxBMhodSZxUMowHSNY38dqhiRgSxDw8uLqZ1",
   "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
   "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF", // SKYE — official coin, on Trade tab
-  "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL — hidden everywhere
+  "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL (original test) — hidden everywhere
+  "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL (no on-chain metadata) — abandoned, will relaunch
 ]);
 
 interface DiscoveredToken extends LaunchedTokenInfo {
