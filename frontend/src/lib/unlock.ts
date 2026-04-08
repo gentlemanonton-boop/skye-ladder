@@ -55,6 +55,15 @@ export function calculateUnlockedBps(currentPrice: number, position: Position): 
   }
 
   if (mult >= 15.0) return 10000;
+
+  // 5x and 10x milestone snap — matches on-chain epsilon (±0.5%) in
+  // `programs/skye-ladder/src/math.rs` (EPSILON = 50 in mult-scaled units of 10000).
+  // Without these, the frontend underestimates the unlock by ~6 percentage
+  // points in the narrow windows just below each cliff, even though the
+  // on-chain hook would actually grant the full milestone bps.
+  if (mult >= 9.995 && mult < 10.005) return 7500;
+  if (mult >= 4.995 && mult < 5.005) return 6250;
+
   if (mult < 5.0) { const t = (mult - 2) / 3; return Math.floor(5000 + t * 1250 * 0.5); }
   if (mult < 10.0) { const t = (mult - 5) / 5; return Math.floor(6250 + t * 1250 * 0.5); }
   const t = (mult - 10) / 5;

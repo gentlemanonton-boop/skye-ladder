@@ -33,6 +33,10 @@ export async function uploadAndCreateMetadata(opts: {
   const { irysUploader } = await import("@metaplex-foundation/umi-uploader-irys");
   const { publicKey: umiPublicKey, createGenericFile } = await import("@metaplex-foundation/umi");
 
+  // Token-2022 program ID — required because all Skye Ladder mints use Token-2022
+  // (TransferHook extension), and createV1 defaults to legacy SPL Token otherwise.
+  const SPL_TOKEN_2022_PROGRAM_ID = umiPublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+
   const umi = createUmi(RPC_URL)
     .use(mplTokenMetadata())
     .use(irysUploader())
@@ -77,6 +81,7 @@ export async function uploadAndCreateMetadata(opts: {
       decimals: 2,
     },
     tokenStandard: TokenStandard.Fungible,
+    splTokenProgram: SPL_TOKEN_2022_PROGRAM_ID,
   }).sendAndConfirm(umi);
 
   return metadataUri;

@@ -15,6 +15,7 @@ import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import { TransactionInstruction } from "@solana/web3.js";
 import ladderIdl from "../idl/skye_ladder.json";
 import { storeToken } from "../lib/launchStore";
+import { uploadAndCreateMetadata } from "../lib/metadataService";
 import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS } from "../constants";
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
@@ -185,10 +186,32 @@ export function LaunchTab() {
       await connection.confirmTransaction(sig3, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // TX 4 (OPTIONAL): Initial buy
+      // TX 4: Upload image + JSON to Arweave + create Metaplex metadata.
+      // This is what makes the token's image visible to anyone who wasn't the
+      // launching browser — without this, image only lives in localStorage.
+      // Failure here is non-fatal: the token still works, the launching user
+      // still sees the image via storeToken below, and the upload can be
+      // retried later.
+      // ══════════════════════════════════════════════════
+      setStep(4);
+      try {
+        if (wallet.wallet?.adapter) {
+          await uploadAndCreateMetadata({
+            wallet: wallet.wallet.adapter,
+            mint: mint.toBase58(),
+            name, symbol, description,
+            imageFile,
+          });
+        }
+      } catch (metaErr: any) {
+        console.error("Metadata upload failed (non-fatal):", metaErr);
+      }
+
+      // ══════════════════════════════════════════════════
+      // TX 5 (OPTIONAL): Initial buy
       // ══════════════════════════════════════════════════
       if (initialBuySolNum > 0) {
-        setStep(4);
+        setStep(5);
         const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const [buyerWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
@@ -259,7 +282,7 @@ export function LaunchTab() {
         launchedAt: Math.floor(Date.now() / 1000),
       });
 
-      setStep(5);
+      setStep(6);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
 
     } catch (e: any) {
@@ -269,8 +292,8 @@ export function LaunchTab() {
     }
   }
 
-  const stepLabels = ["", "Creating token + hook...", "Setting up bonding curve...", "Transferring supply...", "Buying initial position...", "Done!"];
-  const isLaunching = step > 0 && step < 5;
+  const stepLabels = ["", "Creating token + hook...", "Setting up bonding curve...", "Transferring supply...", "Uploading metadata to Arweave...", "Buying initial position...", "Done!"];
+  const isLaunching = step > 0 && step < 6;
 
   return (
     <div className="space-y-6">
@@ -383,7 +406,7 @@ export function LaunchTab() {
               <span className="font-pixel text-[9px] text-skye-400">{stepLabels[step]}</span>
             </div>
             <div className="flex gap-1">
-              {[1,2,3].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
+              {[1,2,3,4].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
             </div>
             <p className="text-[11px] text-ink-faint">Approve in wallet</p>
           </div>

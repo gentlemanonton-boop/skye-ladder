@@ -4,7 +4,7 @@ import { NATIVE_MINT, getMint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useSwap } from "../hooks/useSwap";
 import { useBalances, type TokenBalance } from "../hooks/useBalances";
-import { computeSwapOutput, formatTokens, rawToHuman, formatUsd } from "../lib/format";
+import { computeSwapOutput, computeCurveSellOutput, formatTokens, rawToHuman, formatUsd } from "../lib/format";
 import { getTotalSellable, getInitialBackTokens } from "../lib/unlock";
 import { SKYE_MINT, DECIMALS } from "../constants";
 import { getJupiterQuote, executeJupiterSwap, type JupiterQuote } from "../lib/jupiter";
@@ -88,7 +88,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
 
   const initialBack = getInitialBackTokens(positions, currentPrice);
   const initialBackSolLamports = initialBack.tokensRaw > 0 && pool
-    ? computeSwapOutput(pool.skyeAmount, pool.wsolAmount, initialBack.tokensRaw, pool.feeBps) : 0;
+    ? computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, initialBack.tokensRaw, pool.feeBps) : 0;
   const initialBackSol = initialBackSolLamports / LAMPORTS_PER_SOL;
 
   // Output calculation
@@ -106,7 +106,11 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
       priceImpactPct = ((effectivePrice - spotPrice) / spotPrice) * 100;
     } else if (isCurveSell) {
       const rawIn = amountNum * 10 ** DECIMALS;
-      outputRaw = computeSwapOutput(pool.skyeAmount, pool.wsolAmount, rawIn, pool.feeBps);
+      // Use the curve-specific helper: on-chain takes the fee on the SOL output
+      // side AND deducts treasury_fee a second time, so the user effectively
+      // pays ~1.5 × fee_bps. The generic computeSwapOutput is only correct for
+      // buys.
+      outputRaw = computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, rawIn, pool.feeBps);
       outputHuman = outputRaw / LAMPORTS_PER_SOL;
       const spotPrice = pool.skyeAmount / pool.wsolAmount;
       const effectivePrice = rawIn / outputRaw;
@@ -156,7 +160,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         } else if (route === "curve_then_jup") {
           // SKYE → SOL via curve, then SOL → X via Jupiter
           const rawIn = amountNum * 10 ** DECIMALS;
-          const solOut = computeSwapOutput(pool.skyeAmount, pool.wsolAmount, rawIn, pool.feeBps);
+          const solOut = computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, rawIn, pool.feeBps);
           const quote = await getJupiterQuote(NATIVE_MINT.toBase58(), receiveToken.mint, Math.floor(solOut));
           if (quote) {
             setJupQuote(quote);
@@ -250,7 +254,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         setJupPending(true);
         // Step 1: Curve sell (SKYE → SOL)
         const rawIn = Math.floor(amountNum * 10 ** DECIMALS);
-        const solOut = computeSwapOutput(pool!.skyeAmount, pool!.wsolAmount, rawIn, pool!.feeBps);
+        const solOut = computeCurveSellOutput(pool!.wsolAmount, pool!.skyeAmount, rawIn, pool!.feeBps);
         await swap(BigInt(rawIn), false, 0n);
 
         // Step 2: Jupiter swap (SOL → X)

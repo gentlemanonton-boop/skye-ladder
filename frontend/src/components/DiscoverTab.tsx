@@ -9,19 +9,21 @@ import {
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
 import { getStoredTokens, type LaunchedTokenInfo } from "../lib/launchStore";
+import { fetchMetadataForMints } from "../lib/metadataReader";
 import { formatUsd } from "../lib/format";
 import { useSolPrice } from "../hooks/useSolPrice";
 import { SKYE_CURVE_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS } from "../constants";
 const GRADUATION_SOL = 85;
 
-// Exclude old test tokens that are no longer active
-// Exclude old test tokens AND the main SKYE (it's on the Trade tab, not Discover)
+// Hidden from Discover: dead test tokens + the main SKYE coin.
+// SKYE is intentionally excluded — it's the official coin and lives on the
+// Trade tab, NOT in the Discover feed of community launches. SKYE still
+// appears in the World view (alongside every launched coin).
 const EXCLUDED_MINTS = new Set([
   "HREtu5WXuKJP1L23shpNTP3U4Xtmfekv82Lyuq1vMrsd",
   "5BJcCPdZbxBMhodSZxUMowHSNY38dqhiRgSxDw8uLqZ1",
   "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
-  "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF",
-  "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL test (no image)
+  "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF", // SKYE — official coin, on Trade tab
 ]);
 
 interface DiscoveredToken extends LaunchedTokenInfo {
@@ -37,9 +39,15 @@ function computeCurveBuy(vSol: number, vToken: number, solIn: number): number {
   return Math.floor(eff * vToken / (vSol + eff));
 }
 
+// Mirrors `programs/skye-curve/src/instructions/swap.rs` sell branch + `math::compute_sell`
+// + `math::split_sell_output`. User receives `sol_out_raw - fee` (exactly fee_bps).
+// Treasury gets fee/2 separately, pool retains the other fee/2 — neither affects
+// what the user receives.
 function computeCurveSell(vSol: number, vToken: number, tokensIn: number): number {
-  const raw = tokensIn * vSol / (vToken + tokensIn);
-  return Math.floor(raw - raw * 100 / 10000);
+  if (tokensIn <= 0 || vSol <= 0 || vToken <= 0) return 0;
+  const rawOut = Math.floor((tokensIn * vSol) / (vToken + tokensIn));
+  const fee = Math.floor((rawOut * 100) / 10000);
+  return rawOut - fee;
 }
 
 export function DiscoverTab() {
@@ -135,7 +143,30 @@ export function DiscoverTab() {
           });
         }
         // Only show tokens that have supply in the curve (funded and tradeable)
-        if (!cancelled) setTokens(results.filter(t => t.virtualToken > 0 && t.virtualSol > 0));
+        const tradeable = results.filter(t => t.virtualToken > 0 && t.virtualSol > 0);
+        if (!cancelled) setTokens(tradeable);
+
+        // Enrich asynchronously with on-chain Metaplex metadata. localStorage
+        // only contains data for tokens this browser launched, so without this
+        // step images of other people's tokens never appear on mobile.
+        if (tradeable.length > 0) {
+          fetchMetadataForMints(connection, tradeable.map(t => t.mint))
+            .then(meta => {
+              if (cancelled || meta.size === 0) return;
+              setTokens(prev => prev.map(t => {
+                const m = meta.get(t.mint);
+                if (!m || !m.image) return t;
+                return {
+                  ...t,
+                  image: t.image || m.image,
+                  name: t.name && t.name !== t.mint.slice(0,6) + "..." ? t.name : (m.name || t.name),
+                  symbol: t.symbol && t.symbol !== "???" ? t.symbol : (m.symbol || t.symbol),
+                  description: t.description || m.description,
+                };
+              }));
+            })
+            .catch(() => {});
+        }
       } catch {}
       if (!cancelled) setLoading(false);
     }

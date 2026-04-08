@@ -3,6 +3,7 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { useSolPrice } from "../hooks/useSolPrice";
 import { getStoredTokens } from "../lib/launchStore";
+import { fetchMetadataForMints } from "../lib/metadataReader";
 import { formatUsd } from "../lib/format";
 import { SKYE_CURVE_ID } from "../constants";
 
@@ -125,6 +126,28 @@ export function WorldTab() {
         }
 
         if (!cancelled) setTokens(results);
+
+        // Enrich asynchronously with on-chain Metaplex metadata so token
+        // images render for visitors who didn't launch the token themselves
+        // (the local launchStore is per-browser).
+        const needsImage = results.filter(t => !t.image).map(t => t.mint);
+        if (needsImage.length > 0) {
+          fetchMetadataForMints(connection, needsImage)
+            .then(meta => {
+              if (cancelled || meta.size === 0) return;
+              setTokens(prev => prev.map(t => {
+                const m = meta.get(t.mint);
+                if (!m || !m.image) return t;
+                return {
+                  ...t,
+                  image: t.image || m.image,
+                  name: t.name && t.name !== t.mint.slice(0,6) + "..." ? t.name : (m.name || t.name),
+                  symbol: t.symbol && t.symbol !== "???" ? t.symbol : (m.symbol || t.symbol),
+                };
+              }));
+            })
+            .catch(() => {});
+        }
       } catch {}
       if (!cancelled) setLoading(false);
     }
@@ -271,10 +294,14 @@ export function WorldTab() {
             const floatX = Math.sin(time * 0.3 + idx * 3.1) * 3;
 
             const colors = {
-              HEAVEN: { bg: "rgba(60,50,10,0.85)", border: "rgba(234,179,8,0.4)", glow: "0 0 30px rgba(234,179,8,0.4), 0 0 60px rgba(234,179,8,0.15)", mc: "text-yellow-300", bar: "linear-gradient(90deg, #eab308, #fbbf24)" },
-              CLOUDS: { bg: "rgba(15,25,50,0.85)", border: "rgba(59,130,246,0.3)", glow: "0 0 25px rgba(59,130,246,0.3), 0 0 50px rgba(59,130,246,0.1)", mc: "text-blue-300", bar: "linear-gradient(90deg, #3b82f6, #60a5fa)" },
-              STORM:  { bg: "rgba(25,10,40,0.85)", border: "rgba(147,51,234,0.3)", glow: "0 0 25px rgba(147,51,234,0.3), 0 0 50px rgba(147,51,234,0.1)", mc: "text-purple-300", bar: "linear-gradient(90deg, #8b5cf6, #a78bfa)" },
-              CHAOS:  { bg: "rgba(30,8,8,0.9)", border: "rgba(239,68,68,0.3)", glow: "0 0 20px rgba(239,68,68,0.3), 0 0 40px rgba(239,68,68,0.1)", mc: "text-red-300", bar: "linear-gradient(90deg, #ef4444, #f97316)" },
+              HEAVEN: { bg: "rgba(60,50,10,0.85)", border: "rgba(234,179,8,0.4)", glow: "0 0 30px rgba(234,179,8,0.4), 0 0 60px rgba(234,179,8,0.15)", mc: "text-yellow-300", bar: "linear-gradient(90deg, #eab308, #fbbf24)",
+                rockTop: "#caa86a", rockMid: "#7a5a2a", rockBottom: "#3a2810", grass: "#d4b755" },
+              CLOUDS: { bg: "rgba(15,25,50,0.85)", border: "rgba(59,130,246,0.3)", glow: "0 0 25px rgba(59,130,246,0.3), 0 0 50px rgba(59,130,246,0.1)", mc: "text-blue-300", bar: "linear-gradient(90deg, #3b82f6, #60a5fa)",
+                rockTop: "#a8b8c8", rockMid: "#4a5a78", rockBottom: "#1a2438", grass: "#6dbf8f" },
+              STORM:  { bg: "rgba(25,10,40,0.85)", border: "rgba(147,51,234,0.3)", glow: "0 0 25px rgba(147,51,234,0.3), 0 0 50px rgba(147,51,234,0.1)", mc: "text-purple-300", bar: "linear-gradient(90deg, #8b5cf6, #a78bfa)",
+                rockTop: "#8a6ba8", rockMid: "#3e2a55", rockBottom: "#180a28", grass: "#5a3a78" },
+              CHAOS:  { bg: "rgba(30,8,8,0.9)", border: "rgba(239,68,68,0.3)", glow: "0 0 20px rgba(239,68,68,0.3), 0 0 40px rgba(239,68,68,0.1)", mc: "text-red-300", bar: "linear-gradient(90deg, #ef4444, #f97316)",
+                rockTop: "#9a4a2a", rockMid: "#4a1a08", rockBottom: "#1a0500", grass: "#7a2510" },
             }[zone];
 
             return (
@@ -357,12 +384,75 @@ export function WorldTab() {
                     )}
                   </div>
 
-                  {/* Shadow under island */}
-                  <div className="mx-auto -mt-1" style={{
-                    width: "70%", height: 10,
-                    background: "radial-gradient(ellipse, rgba(0,0,0,0.4) 0%, transparent 70%)",
-                    borderRadius: "50%",
-                  }} />
+                  {/* ─── Floating sky island ─── */}
+                  {/* Rocky underside that hangs below the card. The card sits
+                      on top of this like a building on the island's plateau. */}
+                  <svg
+                    className="block mx-auto -mt-[2px] pointer-events-none"
+                    width="100%"
+                    height="60"
+                    viewBox="0 0 180 60"
+                    preserveAspectRatio="none"
+                    style={{ filter: `drop-shadow(0 8px 12px rgba(0,0,0,0.55))` }}
+                  >
+                    <defs>
+                      <linearGradient id={`island-rock-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={colors.rockTop} />
+                        <stop offset="55%" stopColor={colors.rockMid} />
+                        <stop offset="100%" stopColor={colors.rockBottom} />
+                      </linearGradient>
+                    </defs>
+                    {/* Main rocky chunk — wider at top, jagged taper to a point */}
+                    <path
+                      d="
+                        M 8 2
+                        L 172 2
+                        L 168 10
+                        L 174 18
+                        L 162 26
+                        L 150 36
+                        L 132 44
+                        L 110 50
+                        L 92 56
+                        L 78 50
+                        L 60 46
+                        L 42 38
+                        L 28 28
+                        L 18 18
+                        L 12 10
+                        Z
+                      "
+                      fill={`url(#island-rock-${idx})`}
+                      stroke={colors.rockBottom}
+                      strokeWidth="0.5"
+                    />
+                    {/* Grass / moss crown along the top edge where the card meets the rock */}
+                    <path
+                      d="
+                        M 8 2
+                        Q 18 5 28 2
+                        Q 40 6 52 2
+                        Q 64 5 76 2
+                        Q 90 6 104 2
+                        Q 118 5 130 2
+                        Q 144 6 156 2
+                        Q 168 5 172 2
+                        L 172 4
+                        L 8 4
+                        Z
+                      "
+                      fill={colors.grass}
+                      opacity="0.85"
+                    />
+                    {/* A few crack/shadow lines to give the rock texture */}
+                    <path
+                      d="M 50 12 L 56 28 M 90 18 L 88 38 M 130 14 L 124 32"
+                      stroke={colors.rockBottom}
+                      strokeWidth="0.8"
+                      opacity="0.5"
+                      fill="none"
+                    />
+                  </svg>
                 </div>
               </div>
             );
