@@ -1,11 +1,8 @@
-import { useEffect, useState, useRef } from "react";
-import { useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useSolPrice } from "../hooks/useSolPrice";
-import { getStoredTokens } from "../lib/launchStore";
-import { fetchMetadataForMints } from "../lib/metadataReader";
+import { useDiscoveredTokens } from "../hooks/useDiscoveredTokens";
 import { formatUsd } from "../lib/format";
-import { SKYE_CURVE_ID } from "../constants";
+import { SKYE_MINT } from "../constants";
 
 interface WorldToken {
   mint: string;
@@ -21,6 +18,8 @@ interface WorldToken {
   telegram: string;
   discord: string;
 }
+
+const SKYE_MINT_STR = SKYE_MINT.toBase58();
 
 const WORLD_HEIGHT = 3000;
 
@@ -40,10 +39,8 @@ function getZone(mc: number): "CHAOS" | "STORM" | "CLOUDS" | "HEAVEN" {
 }
 
 export function WorldTab() {
-  const { connection } = useConnection();
   const solUsd = useSolPrice();
-  const [tokens, setTokens] = useState<WorldToken[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { tokens: baseTokens, loading } = useDiscoveredTokens();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [time, setTime] = useState(0);
 
@@ -59,104 +56,27 @@ export function WorldTab() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Load tokens
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const stored = getStoredTokens();
-        const SKYE_MINT_STR = "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF";
-        const EXCLUDED = new Set([
-          "HREtu5WXuKJP1L23shpNTP3U4Xtmfekv82Lyuq1vMrsd",
-          "5BJcCPdZbxBMhodSZxUMowHSNY38dqhiRgSxDw8uLqZ1",
-          "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
-          "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL (original test) — hidden everywhere
-          "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL (no on-chain metadata) — abandoned, will relaunch
-        ]);
-
-        const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: 50 });
-        const txResults = await Promise.allSettled(
-          sigs.map(s => connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 }))
-        );
-
-        const onChainMints: string[] = [];
-        for (const result of txResults) {
-          if (cancelled) break;
-          if (result.status !== "fulfilled" || !result.value?.meta?.logMessages) continue;
-          const l = result.value.meta.logMessages.find(l => l.includes("Token launched:"));
-          if (!l) continue;
-          const m = l.match(/mint=([A-Za-z0-9]+)/);
-          if (m && !EXCLUDED.has(m[1])) onChainMints.push(m[1]);
-        }
-
-        const allMints = [...new Set([SKYE_MINT_STR, ...stored.map(s => s.mint), ...onChainMints])].filter(m => !EXCLUDED.has(m));
-
-        const curvePDAs = allMints.map(mintStr =>
-          PublicKey.findProgramAddressSync([Buffer.from("curve"), new PublicKey(mintStr).toBuffer()], SKYE_CURVE_ID)[0]
-        );
-        const curveAccounts = await connection.getMultipleAccountsInfo(curvePDAs);
-
-        const results: WorldToken[] = [];
-        for (let i = 0; i < allMints.length; i++) {
-          const mintStr = allMints[i];
-          const info = stored.find(s => s.mint === mintStr);
-          const acct = curveAccounts[i];
-          if (!acct || acct.data.length < 210) continue;
-
-          const virtualToken = Number(acct.data.readBigUInt64LE(168));
-          const virtualSol = Number(acct.data.readBigUInt64LE(176));
-          const realSol = Number(acct.data.readBigUInt64LE(184));
-          const graduated = acct.data[210] === 1;
-          if (virtualToken <= 0 || virtualSol <= 0) continue;
-
-          const price = virtualSol / virtualToken;
-          const mcSol = price * 1e9;
-          const mc = mcSol * solUsd;
-
-          const isSKYE = mintStr === SKYE_MINT_STR;
-          results.push({
-            mint: mintStr,
-            name: isSKYE ? "Skye" : (info?.name || mintStr.slice(0, 6) + "..."),
-            symbol: isSKYE ? "SKYE" : (info?.symbol || "???"),
-            image: isSKYE ? "/logo.jpeg" : (info?.image || ""),
-            mc, mcSol, realSol, graduated,
-            website: isSKYE ? "https://skyefall.gg" : (info?.website || ""),
-            twitter: isSKYE ? "https://x.com/d0uble07__" : (info?.twitter || ""),
-            telegram: info?.telegram || "",
-            discord: info?.discord || "",
-          });
-        }
-
-        if (!cancelled) setTokens(results);
-
-        // Enrich asynchronously with on-chain Metaplex metadata so token
-        // images render for visitors who didn't launch the token themselves
-        // (the local launchStore is per-browser).
-        const needsImage = results.filter(t => !t.image).map(t => t.mint);
-        if (needsImage.length > 0) {
-          fetchMetadataForMints(connection, needsImage)
-            .then(meta => {
-              if (cancelled || meta.size === 0) return;
-              setTokens(prev => prev.map(t => {
-                const m = meta.get(t.mint);
-                if (!m || !m.image) return t;
-                return {
-                  ...t,
-                  image: t.image || m.image,
-                  name: t.name && t.name !== t.mint.slice(0,6) + "..." ? t.name : (m.name || t.name),
-                  symbol: t.symbol && t.symbol !== "???" ? t.symbol : (m.symbol || t.symbol),
-                };
-              }));
-            })
-            .catch(() => {});
-        }
-      } catch {}
-      if (!cancelled) setLoading(false);
-    }
-    load();
-    const interval = setInterval(load, 30000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [connection, solUsd]);
+  // Map the shared base data into the world view's display shape. SKYE
+  // gets hardcoded display fields (logo + socials) since it's the official
+  // coin; everything else uses whatever the launchStore + on-chain
+  // Metaplex metadata produced.
+  const tokens: WorldToken[] = useMemo(() => baseTokens.map(t => {
+    const isSKYE = t.mint === SKYE_MINT_STR;
+    const price = t.virtualSol / t.virtualToken;
+    const mcSol = price * 1e9;
+    const mc = mcSol * solUsd;
+    return {
+      mint: t.mint,
+      name: isSKYE ? "Skye" : t.name,
+      symbol: isSKYE ? "SKYE" : t.symbol,
+      image: isSKYE ? "/logo.jpeg" : t.image,
+      mc, mcSol, realSol: t.realSol, graduated: t.graduated,
+      website: isSKYE ? "https://skyefall.gg" : t.website,
+      twitter: isSKYE ? "https://x.com/d0uble07__" : t.twitter,
+      telegram: t.telegram,
+      discord: t.discord,
+    };
+  }), [baseTokens, solUsd]);
 
   // Scroll to bottom (chaos) on load
   useEffect(() => {

@@ -8,32 +8,16 @@ import {
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
-import { getStoredTokens, type LaunchedTokenInfo } from "../lib/launchStore";
-import { fetchMetadataForMints } from "../lib/metadataReader";
 import { formatUsd } from "../lib/format";
 import { useSolPrice } from "../hooks/useSolPrice";
-import { SKYE_CURVE_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS } from "../constants";
+import { useDiscoveredTokens, type DiscoveredTokenBase } from "../hooks/useDiscoveredTokens";
+import { SKYE_CURVE_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS, SKYE_MINT } from "../constants";
 const GRADUATION_SOL = 85;
 
-// Hidden from Discover: dead test tokens + the main SKYE coin.
-// SKYE is intentionally excluded — it's the official coin and lives on the
-// Trade tab, NOT in the Discover feed of community launches. SKYE still
-// appears in the World view (alongside every launched coin).
-const EXCLUDED_MINTS = new Set([
-  "HREtu5WXuKJP1L23shpNTP3U4Xtmfekv82Lyuq1vMrsd",
-  "5BJcCPdZbxBMhodSZxUMowHSNY38dqhiRgSxDw8uLqZ1",
-  "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
-  "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF", // SKYE — official coin, on Trade tab
-  "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL (original test) — hidden everywhere
-  "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL (no on-chain metadata) — abandoned, will relaunch
-]);
-
-interface DiscoveredToken extends LaunchedTokenInfo {
-  realSol: number;
-  virtualSol: number;
-  virtualToken: number;
-  graduated: boolean;
-}
+// Re-export of the shared base type for local code. SKYE is filtered out
+// in render below — it's the official coin and lives on the Trade tab.
+type DiscoveredToken = DiscoveredTokenBase;
+const SKYE_MINT_STR = SKYE_MINT.toBase58();
 
 function computeCurveBuy(vSol: number, vToken: number, solIn: number): number {
   const fee = solIn * 100 / 10000;
@@ -56,8 +40,10 @@ export function DiscoverTab() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const solUsd = useSolPrice();
-  const [tokens, setTokens] = useState<DiscoveredToken[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { tokens: allTokens, loading } = useDiscoveredTokens();
+  // SKYE is the official coin — it lives on the Trade tab, not the
+  // Discover feed of community launches.
+  const tokens = allTokens.filter(t => t.mint !== SKYE_MINT_STR);
   const [trading, setTrading] = useState<string | null>(null);
   const [isBuy, setIsBuy] = useState(true);
   const [amount, setAmount] = useState("");
@@ -87,94 +73,9 @@ export function DiscoverTab() {
     }
   }, [connection, publicKey]);
 
-  // Load tokens
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const stored = getStoredTokens();
-        const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: 50 });
-
-        // Batch fetch transactions instead of sequential
-        const txResults = await Promise.allSettled(
-          sigs.map(s => connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 }))
-        );
-
-        const onChainMints: string[] = [];
-        for (const result of txResults) {
-          if (cancelled) break;
-          if (result.status !== "fulfilled" || !result.value?.meta?.logMessages) continue;
-          const logs = result.value.meta.logMessages;
-          const l = logs.find(l => l.includes("Token launched:"));
-          if (!l) continue;
-          const m = l.match(/mint=([A-Za-z0-9]+)/);
-          if (m && !EXCLUDED_MINTS.has(m[1])) onChainMints.push(m[1]);
-        }
-
-        const allMints = [...new Set([...stored.map(s => s.mint), ...onChainMints])].filter(m => !EXCLUDED_MINTS.has(m));
-
-        // Batch fetch all curve PDAs at once using getMultipleAccountsInfo
-        const curvePDAs = allMints.map(mintStr => {
-          const mint = new PublicKey(mintStr);
-          return PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], SKYE_CURVE_ID)[0];
-        });
-        const curveAccounts = await connection.getMultipleAccountsInfo(curvePDAs);
-
-        const results: DiscoveredToken[] = [];
-        for (let i = 0; i < allMints.length; i++) {
-          const mintStr = allMints[i];
-          const info = stored.find(s => s.mint === mintStr);
-          const acct = curveAccounts[i];
-          let realSol = 0, virtualSol = 0, virtualToken = 0, graduated = false, creatorOnChain = "";
-          if (acct && acct.data.length >= 210) {
-            // Creator is the first field after the 8-byte discriminator (32 bytes)
-            creatorOnChain = new PublicKey(acct.data.slice(8, 40)).toBase58();
-            virtualToken = Number(acct.data.readBigUInt64LE(168));
-            virtualSol = Number(acct.data.readBigUInt64LE(176));
-            realSol = Number(acct.data.readBigUInt64LE(184));
-            graduated = acct.data[210] === 1;
-          }
-
-          results.push({
-            mint: mintStr, name: info?.name || mintStr.slice(0, 6) + "...", symbol: info?.symbol || "???",
-            image: info?.image || "", description: info?.description || "",
-            website: info?.website || "", twitter: info?.twitter || "",
-            telegram: info?.telegram || "", discord: info?.discord || "",
-            curve: curvePDAs[i].toBase58(), creator: creatorOnChain || info?.creator || "",
-            launchedAt: info?.launchedAt || 0, realSol, virtualSol, virtualToken, graduated,
-          });
-        }
-        // Only show tokens that have supply in the curve (funded and tradeable)
-        const tradeable = results.filter(t => t.virtualToken > 0 && t.virtualSol > 0);
-        if (!cancelled) setTokens(tradeable);
-
-        // Enrich asynchronously with on-chain Metaplex metadata. localStorage
-        // only contains data for tokens this browser launched, so without this
-        // step images of other people's tokens never appear on mobile.
-        if (tradeable.length > 0) {
-          fetchMetadataForMints(connection, tradeable.map(t => t.mint))
-            .then(meta => {
-              if (cancelled || meta.size === 0) return;
-              setTokens(prev => prev.map(t => {
-                const m = meta.get(t.mint);
-                if (!m || !m.image) return t;
-                return {
-                  ...t,
-                  image: t.image || m.image,
-                  name: t.name && t.name !== t.mint.slice(0,6) + "..." ? t.name : (m.name || t.name),
-                  symbol: t.symbol && t.symbol !== "???" ? t.symbol : (m.symbol || t.symbol),
-                  description: t.description || m.description,
-                };
-              }));
-            })
-            .catch(() => {});
-        }
-      } catch {}
-      if (!cancelled) setLoading(false);
-    }
-    load();
-    return () => { cancelled = true; };
-  }, [connection]);
+  // Token list comes from the shared `useDiscoveredTokens` hook above —
+  // it's cached at the module level so switching between Discover and
+  // World (or coming back from another tab) is instant.
 
   // Fetch balance when trading panel opens
   useEffect(() => {
