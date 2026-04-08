@@ -8,6 +8,22 @@ use crate::state::Config;
 /// Admin-only, for devnet/localnet testing.
 /// Sets skye_amount and wsol_amount at the correct offsets so the
 /// price reader can compute: price = wsol_amount * PRICE_SCALE / skye_amount.
+///
+/// SECURITY: Mainnet builds (default features) reject this instruction
+/// unconditionally. Only `--features test-price` builds will execute it.
+/// The discriminator still exists so the IDL is stable across build targets,
+/// but the price-mutation attack surface is gone in production.
+#[cfg(not(feature = "test-price"))]
+pub fn handler(
+    _ctx: Context<SetTestPrice>,
+    _skye_amount: u64,
+    _wsol_amount: u64,
+) -> Result<()> {
+    msg!("Skye Ladder: set_test_price disabled in this build");
+    Err(SkyeLadderError::Unauthorized.into())
+}
+
+#[cfg(feature = "test-price")]
 pub fn handler(
     ctx: Context<SetTestPrice>,
     skye_amount: u64,

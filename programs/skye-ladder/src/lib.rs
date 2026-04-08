@@ -39,6 +39,10 @@ pub mod skye_ladder {
     }
 
     /// Write test price data to the AMM Pool account (admin only, for testing).
+    /// In mainnet builds the handler hard-errors; only `--features test-price`
+    /// builds (devnet/localnet) actually mutate pool state. The instruction
+    /// discriminator remains so the IDL is stable, but the attack surface is
+    /// gone — even a compromised admin key cannot rewrite the spot price.
     pub fn set_test_price(ctx: Context<SetTestPrice>, skye_amount: u64, wsol_amount: u64) -> Result<()> {
         instructions::set_test_price::handler(ctx, skye_amount, wsol_amount)
     }

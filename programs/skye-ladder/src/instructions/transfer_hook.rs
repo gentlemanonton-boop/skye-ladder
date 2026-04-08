@@ -31,8 +31,20 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
     // Read spot price from the AMM pool
     let current_price = read_spot_price(ctx.accounts)?;
 
+    let mint_key = ctx.accounts.mint.key();
+    let program_id = ctx.program_id;
+
     if is_buy {
         // ── BUY: Pool → Wallet ──
+        // Validate the receiver wallet record PDA matches the destination token owner.
+        let dest_owner = read_token_account_owner(&ctx.accounts.destination_token)?;
+        validate_wallet_pda(
+            &ctx.accounts.receiver_wallet_record,
+            &dest_owner,
+            &mint_key,
+            program_id,
+        )?;
+
         let receiver_record = &mut load_wallet_record_mut(
             &ctx.accounts.receiver_wallet_record,
         )?;
@@ -43,7 +55,15 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         msg!("Skye Ladder: BUY {} tokens at price {}", amount, current_price);
     } else if is_sell {
         // ── SELL: Wallet → Pool ──
-        // Enforce unlock restrictions on the sender.
+        // Validate sender wallet record PDA matches owner_delegate (the source owner
+        // per the SPL transfer hook interface).
+        validate_wallet_pda(
+            &ctx.accounts.sender_wallet_record,
+            ctx.accounts.owner_delegate.key,
+            &mint_key,
+            program_id,
+        )?;
+
         let sender_record = &mut load_wallet_record_mut(
             &ctx.accounts.sender_wallet_record,
         )?;
@@ -54,6 +74,21 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
         msg!("Skye Ladder: SELL {} tokens at price {}", amount, current_price);
     } else {
         // ── TRANSFER: Wallet → Wallet ──
+        // Validate BOTH PDAs against their respective owners.
+        validate_wallet_pda(
+            &ctx.accounts.sender_wallet_record,
+            ctx.accounts.owner_delegate.key,
+            &mint_key,
+            program_id,
+        )?;
+        let dest_owner = read_token_account_owner(&ctx.accounts.destination_token)?;
+        validate_wallet_pda(
+            &ctx.accounts.receiver_wallet_record,
+            &dest_owner,
+            &mint_key,
+            program_id,
+        )?;
+
         // Sender must pass unlock check (treated as sell).
         let sender_record = &mut load_wallet_record_mut(
             &ctx.accounts.sender_wallet_record,
@@ -75,12 +110,51 @@ pub fn handler(ctx: Context<TransferHook>, amount: u64) -> Result<()> {
     Ok(())
 }
 
-/// Fix positions with impossibly high entry_price caused by old merge bugs.
+/// Read the `owner` pubkey from a SPL Token / Token-2022 account.
+/// Both layouts place the owner at bytes [32..64).
+fn read_token_account_owner(token_account: &AccountInfo) -> Result<Pubkey> {
+    let data = token_account.try_borrow_data()?;
+    require!(data.len() >= 64, SkyeLadderError::InvalidTokenAccount);
+    let mut owner_bytes = [0u8; 32];
+    owner_bytes.copy_from_slice(&data[32..64]);
+    Ok(Pubkey::new_from_array(owner_bytes))
+}
+
+/// Verify that the supplied account's pubkey matches the canonical
+/// WalletRecord PDA derivation `[b"wallet", owner, mint]` under this program.
 ///
-/// If a position's entry_price is >1000x the current spot price, it's corrupt
-/// (no real position could be that far underwater). Reset entry_price to
-/// current_price so the position is treated as "at entry" (Phase 1 unlock)
-/// rather than getting 100% unlock via the underwater rule.
+/// This is the load-bearing check that prevents an attacker from passing an
+/// arbitrary mut account that the hook would then deserialize and write to.
+/// Without it, the hook trusts whatever the caller put in `sender_wallet_record`
+/// / `receiver_wallet_record` based only on the off-chain ExtraAccountMetaList
+/// resolution — defense-in-depth requires the program itself to enforce it.
+fn validate_wallet_pda(
+    account: &AccountInfo,
+    owner: &Pubkey,
+    mint: &Pubkey,
+    program_id: &Pubkey,
+) -> Result<()> {
+    let (expected, _bump) = Pubkey::find_program_address(
+        &[b"wallet", owner.as_ref(), mint.as_ref()],
+        program_id,
+    );
+    require_keys_eq!(*account.key, expected, SkyeLadderError::InvalidWalletRecord);
+    Ok(())
+}
+
+/// Fix positions with impossibly high entry_price caused by garbage bytes
+/// from old layout migrations.
+///
+/// CONSERVATIVE THRESHOLD: only triggers when entry_price exceeds the current
+/// spot price by 10^6× (one million). A real underwater position cannot be
+/// that far below entry — token prices simply do not move 6 orders of
+/// magnitude in any direction in normal trading. Anything past that point is
+/// garbled data, not a real position.
+///
+/// The previous threshold (1000×) was too aggressive: a holder who bought
+/// near a local top and is now mid-dip can legitimately sit at 100–500×
+/// underwater, and the old rule wiped their entry_price (and their unlock
+/// progress) every time they touched the hook.
 fn sanitize_corrupt_entry_prices(record: &mut WalletRecord, current_price: u64) {
     let cp = current_price as u128;
     for pos in record.positions.iter_mut() {
@@ -88,8 +162,8 @@ fn sanitize_corrupt_entry_prices(record: &mut WalletRecord, current_price: u64) 
             continue;
         }
         let ep = pos.entry_price as u128;
-        // If entry_price > 1000x current price, it's corrupt
-        if ep > cp.saturating_mul(1000) {
+        // Garbled-data threshold: 10^6× current price
+        if ep > cp.saturating_mul(1_000_000) {
             msg!(
                 "Skye Ladder: Fixing corrupt entry_price {} → {} for position with {} tokens",
                 pos.entry_price, current_price, pos.token_balance
@@ -163,30 +237,28 @@ fn load_wallet_record_mut(account: &AccountInfo) -> Result<WalletRecord> {
     let mut slice: &[u8] = &data;
     match WalletRecord::try_deserialize(&mut slice) {
         Ok(record) => {
-            // Sanity check: detect corrupt records from layout migration.
-            // Total supply is 1B tokens = 10^18 raw. Any position with
-            // token_balance > 10^18 is impossible and means garbled data.
+            // Detect TRULY garbled data only — fields that are physically
+            // impossible given the supply. The previous "stale ratio" rule
+            // (original_balance / token_balance > 100) was a false positive:
+            // any holder who sold >99% of their bag tripped it, and the
+            // "fix" wiped their unlock high-water mark. We do NOT filter
+            // partially-sold positions anymore; that's normal state.
+            //
+            // Total supply = 1B tokens × 10^9 decimals = 10^18 raw units.
+            // Any field exceeding that came from layout-migration garbage.
             let max_raw: u64 = 1_000_000_000_000_000_000;
-            // Note: corrupt entry_price is handled by sanitize_corrupt_entry_prices()
-            // in the handler, not here. We only filter truly garbled data here.
             let corrupt = record.positions.iter().any(|p| {
                 p.token_balance > max_raw
                 || p.original_balance > max_raw
                 || p.entry_price == 0
-                // Detect stale positions: original vastly exceeds balance (>100x)
-                // means the original_balance tracking drifted from reality
-                || (p.original_balance > 0 && p.token_balance > 0
-                    && p.original_balance / p.token_balance.max(1) > 100)
             });
             if corrupt {
-                // Filter out corrupt/stale positions, keep valid ones
+                // Drop only the impossible positions; keep partially-sold ones.
                 let clean: Vec<_> = record.positions.into_iter()
                     .filter(|p| {
                         p.token_balance <= max_raw
                         && p.original_balance <= max_raw
                         && p.entry_price > 0
-                        && (p.original_balance == 0
-                            || p.original_balance / p.token_balance.max(1) <= 100)
                     })
                     .collect();
                 Ok(WalletRecord {

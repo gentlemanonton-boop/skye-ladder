@@ -28,4 +28,10 @@ pub enum SkyeLadderError {
 
     #[msg("Program is paused")]
     Paused,
+
+    #[msg("Wallet record PDA does not match expected derivation for this owner+mint")]
+    InvalidWalletRecord,
+
+    #[msg("Token account data is malformed or too short to read owner")]
+    InvalidTokenAccount,
 }

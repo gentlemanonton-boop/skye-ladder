@@ -116,10 +116,11 @@ async function main() {
   console.log("  Skye Ladder — Sell Restriction Test (Random Order)");
   console.log("═══════════════════════════════════════════════════════════════\n");
 
-  // Load test wallets
-  const walletsPath = path.join(__dirname, ".test-wallets.json");
+  // Load test wallets from outside the repo (see test-buy-wallets.ts).
+  const walletsPath = process.env.SKYE_TEST_WALLETS
+    || path.join(process.env.HOME!, ".skye", "test-wallets.json");
   if (!fs.existsSync(walletsPath)) {
-    console.error("  ✗ No .test-wallets.json found. Run test-buy-wallets.ts first.");
+    console.error(`  ✗ No test-wallets.json found at ${walletsPath}. Run test-buy-wallets.ts first.`);
     process.exit(1);
   }
 

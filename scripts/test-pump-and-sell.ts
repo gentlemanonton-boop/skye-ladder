@@ -77,7 +77,8 @@ async function main() {
   console.log("  Skye Ladder — Pump & Sell Restriction Test");
   console.log("═══════════════════════════════════════════════════════════════\n");
 
-  const walletsPath = path.join(__dirname, ".test-wallets.json");
+  const walletsPath = process.env.SKYE_TEST_WALLETS
+    || path.join(process.env.HOME!, ".skye", "test-wallets.json");
   const walletData = JSON.parse(fs.readFileSync(walletsPath, "utf-8")) as { publicKey: string; secretKey: number[] }[];
   const wallets = walletData.map(w => Keypair.fromSecretKey(Uint8Array.from(w.secretKey)));
   const connection = new Connection(RPC_URL, { commitment: "confirmed", confirmTransactionInitialTimeout: 60000 });

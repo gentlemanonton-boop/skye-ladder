@@ -1,0 +1,41 @@
+# Solana / Anchor build artifacts and dev state — never upload to Vercel.
+# Vercel only needs the frontend/ directory; everything else is on-chain
+# code, local validator state, build outputs, or scratch files.
+
+# On-chain code & build outputs
+programs/
+target/
+.anchor/
+*.so
+Cargo.lock
+Cargo.toml
+Anchor.toml
+Xargo.toml
+
+# Local validator (live sockets, rocksdb, snapshots, KEYPAIRS)
+test-ledger/
+
+# Tests, scripts, migrations
+tests/
+scripts/
+migrations/
+
+# Audit baselines
+scans/
+
+# Sensitive files (defense in depth — these should not be in the repo
+# anyway, but if they ever come back we don't want them on Vercel either)
+*-keypair.json
+treasury-keypair.json
+.test-wallets.json
+.env
+.env.*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Memory / agent files
+.claude/

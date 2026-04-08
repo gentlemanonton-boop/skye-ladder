@@ -1,0 +1,493 @@
+{
+  "rpc": "https://api.mainnet-beta.solana.com",
+  "mint": "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF",
+  "program": "4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz",
+  "currentPriceScaled": null,
+  "totalRecords": 41,
+  "recordsWithCorruption": 12,
+  "corruptPositions": 12,
+  "reports": [
+    {
+      "recordPda": "7qE71DrDXM9CZjsPVJEFR58bJJo2Uq912vCMoJ5pF7iX",
+      "owner": "Db2ernmAH23J6XQLFW7UNpPMzQgoZZYqH48Ch4po9zE3",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 15314887x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "66158829497",
+            "initialSol": "1012621023",
+            "tokenBalance": "999413746",
+            "unlockedBps": 10000,
+            "originalBalance": "15305908999413746",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "7z8oNDD9A4A9zr6M4BUdXBiNmrx4yv5ZLnQM4NNt9J1",
+      "owner": "2gbiB89rcxffHPQBE35P42HTG45rJPHg7RgJ9jXfPXQW",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 9662404489572315x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "41452967574",
+            "initialSol": "1602141360",
+            "tokenBalance": "4",
+            "unlockedBps": 10000,
+            "originalBalance": "38649617958289260",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "6KNrTJBLyV5KmAFbDFp6RZhE3xq2XNW3rqLWyFupHa9o",
+      "owner": "9Q8pdftNkthBRcCrfHhb8W1wFLpvWtvtTj9BQG4A2vbd",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "7HU4in2cUTvYGqJexR7ELV3F2e7tHA8fZ5GNN9FXtLjR",
+      "owner": "gCeyTAGoYbRZJZmfvYG9uwSDXZHFfCyassuY9QpuHGZ",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "98wphbKjrdqSq9qQzRLn4RnS22X5aEWrbMKSJKF8cVMg",
+      "owner": "54aiLhYpLCu1WxsdSg6FD4MHkwh95W1pk234JTAbbkwy",
+      "positionCount": 2,
+      "totalPositions": 2,
+      "findings": [
+        {
+          "reasons": [
+            "token_balance (12165771347829719040) > total supply (10^18)",
+            "original_balance (11977170859799609344) > total supply (10^18)"
+          ],
+          "position": {
+            "entryPrice": "3776682868932609",
+            "initialSol": "26203217002496",
+            "tokenBalance": "12165771347829719040",
+            "unlockedBps": 639959058,
+            "originalBalance": "11977170859799609344",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 1
+        }
+      ]
+    },
+    {
+      "recordPda": "BLjeowRLsBr1iCuLajrcoDtpgn1fVC87vXgK2GJfsgGX",
+      "owner": "CLeuv4qPDuNdmCv2TRNhWN8imcier788MfQSaMs4Pwzs",
+      "positionCount": 0,
+      "totalPositions": 0,
+      "findings": []
+    },
+    {
+      "recordPda": "2Ha4yEDFJcx87CzLm6WDam94oo75iypAar8CsioZ7TkR",
+      "owner": "3pPUHCLHDt9CNjQdvhALzpzER2TpjrSX3QeCfiy6fog9",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "7d8HqKvDnXpQaDaf9MEbDfvXZnhRCAJquVeau731Vanz",
+      "owner": "EPZ92ej243TJdXmhCGay4TwjyJktrNqujxRYLwkKMrDK",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "Ec1DJTLYPECVxK8kjDQbwquPKMr84USuKd4oWQcqUPPH",
+      "owner": "JE39LfrNRNWEq79ocTrFERNCHHQGPagKcyvXciU7vUj7",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 11575827336744949x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "1426063360000000100",
+            "initialSol": "16507863226618354",
+            "tokenBalance": "1",
+            "unlockedBps": 10000,
+            "originalBalance": "11575827336744949",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "dTsD2HoN1degajxZDNS5LAy89taVQUmkGEMfD3Yz4rL",
+      "owner": "3rDZQZ1c4dYDzCqdTVEwifVRnWPu6MUSD46fD2meDa33",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "5BqQEBSqM1i2mdFToVNnj7R18HjbDYayQyZNjpLWz9j7",
+      "owner": "7ktjmGm3PUhEgDEAm1TipiXX5XHCTq1oRwU7DeP1BP7T",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "4VnTRCRobyDBMYvtbhkitQbNURfV5GaS8C2sKnF22HLU",
+      "owner": "8jCRPeynp3uRh3KWvaYTTCmNPm2MRJqqTGpsyQzpdjhS",
+      "positionCount": 0,
+      "totalPositions": 0,
+      "findings": []
+    },
+    {
+      "recordPda": "5kBFQVsKGjpWPZS9ZpQVoBZyoV6wUJ5VEaqvSN8ahcBf",
+      "owner": "G7fJXYuw9wxMUEEoTvua34U67NoHPTBTxUYa2XCCFGvV",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "2iRgmKW2Y2PSWGSqtnbmzZS4yq9DtgM1pqym5uULSC9S",
+      "owner": "5j8heEZG4h4GdyqLKwJwrPWYy2iMW3Ft4nnptjhBVfXe",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "AKEiZtzLddyXPpjcAQ57cTEqAgW766g2wpVDPGbUa4hF",
+      "owner": "Cr7YxJnP6qNY66jTzYyvVLA3DRrGxPmqDe4ibyNVYU8A",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 127x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "40315791834",
+            "initialSol": "19811371",
+            "tokenBalance": "3839099595038",
+            "unlockedBps": 9951,
+            "originalBalance": "491404748164759",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "GJcCy47DuvvFMpNRuJDD1LDtonwxsJzFpcZUB19o7dZb",
+      "owner": "DrNj1icUSCfxCYxAsHi2Pqi3oRPR7ciYiohe6cB6DVbK",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 666x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "55043090413",
+            "initialSol": "49560741",
+            "tokenBalance": "1350598442616",
+            "unlockedBps": 10000,
+            "originalBalance": "900398961743977",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "B31AA6YzBq1moKuyYH65EWUxSQfhagt4bffc6tZtn3rz",
+      "owner": "7ru7oZkPRBFyWyqEwHV4Bap9XjvirrZKZ3hcFRNV5bss",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "G2o3Khb5HaJPeWgN1wzD8ts6JcY3R8Zd3hHq4G1BjYb8",
+      "owner": "GMrMAVskNcDwGJ2DeTaEjixDgx7T7occL4dNZABNTR5r",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "EqM6Vyh3Qr8o93aKg6oQuMXodvyxerAh7LKu6VjFFyDd",
+      "owner": "GVQLavDCM8yKhk6Qnp8e566TmZW4Nx5vXnYhw1X38cNQ",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "7YNCFa8kf374UtTcLtUhVnxSghNk1j6igRbdRcXRRTNA",
+      "owner": "7iicLXHJDAanCZbyxFeWX2WfEBxU82rgG81ExUry5Uyu",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "2vfLs6319hVECroZf2PU3nZwXoXnCwXquKssuhkGRxY5",
+      "owner": "5ZgW4oE6sPHSRfcFvC84zyziYbfWBC9LGFKkZWcVmMhX",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 9999x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "57803099675",
+            "initialSol": "59485337",
+            "tokenBalance": "102910289248",
+            "unlockedBps": 10000,
+            "originalBalance": "1029102892476314",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "8R8UGPjaEirLsMwPTZjXTdF31FB4UCTVAAUQD6aNQq9x",
+      "owner": "GUpxzoyCHHemSUgm73k6ayU2CZa6qwbVLM4vZS7EMfqn",
+      "positionCount": 0,
+      "totalPositions": 0,
+      "findings": []
+    },
+    {
+      "recordPda": "2cuCDWGKvVHRD4qwyzvweLgTaTtNwab6XzmX7gwvHUQk",
+      "owner": "Aizw7nCTpzEmNYb86miHnYA36NFtZmFEjZAxvF2MbRz6",
+      "positionCount": 2,
+      "totalPositions": 2,
+      "findings": [
+        {
+          "reasons": [
+            "token_balance (8792854384811048960) > total supply (10^18)",
+            "original_balance (8792854384811048960) > total supply (10^18)"
+          ],
+          "position": {
+            "entryPrice": "2782676786216960",
+            "initialSol": "137442776645632",
+            "tokenBalance": "8792854384811048960",
+            "unlockedBps": 175,
+            "originalBalance": "8792854384811048960",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 1
+        }
+      ]
+    },
+    {
+      "recordPda": "Da4DyJ7Pgpbdhmu4zmuDW5UV41BTMQ45BirZrLXJEYps",
+      "owner": "3vWakYpYKfhkTiyxJiTNWczfwnfZJDDntjGWZwM9anaK",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "3N2ReoEuRYjMf5YCaSWMa916oa7zYEvAeM3FtmKSygEX",
+      "owner": "5cYoJj1v2L7gHyNjLb4icPE6yHszi9PiaS3HZNEPyZfm",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "EwWKyWN6XxZvRazmasKCL3c8Pz5pLPxNWn2dSyygQ9qa",
+      "owner": "9hvKYbknd7ECKvJ8zy1sydLkXEkdL4vZPkes8F7hrxmZ",
+      "positionCount": 0,
+      "totalPositions": 0,
+      "findings": []
+    },
+    {
+      "recordPda": "smQc1s599S28MciXkpCoC8vTtV4MGHRGMUoPJWGFbYE",
+      "owner": "D3bcLqWJLVYUtKkaEF16b7EizrN2rughhLoFvifC1YcS",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 9987x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "82095309720",
+            "initialSol": "499984142",
+            "tokenBalance": "609763960853",
+            "unlockedBps": 10000,
+            "originalBalance": "6090288763960853",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "4HfcBXX4WicJp57u1HZDnZnTC4T25EmPTeyXSb4F5NA9",
+      "owner": "5T4bUP5bM2ZjiprVFkcr7bK4drtXFygECh62nYPTizvT",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 17512205603498001x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "41680491939",
+            "initialSol": "2189752033",
+            "tokenBalance": "3",
+            "unlockedBps": 10000,
+            "originalBalance": "52536616810494003",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "A2T4qhwbPkM97WXWjzVxvrrN7k1NeqTkjxwBQDKwPDkh",
+      "owner": "7BtwAHaXCki5BKFQz2fKQQAjmNWiq6JkmTS6GwTX5kfi",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": [
+        {
+          "reasons": [
+            "stale ratio: original/balance = 196513440x (>100x)"
+          ],
+          "position": {
+            "entryPrice": "63250119539",
+            "initialSol": "2074817147",
+            "tokenBalance": "166926858",
+            "unlockedBps": 10000,
+            "originalBalance": "32803371166926858",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 0
+        }
+      ]
+    },
+    {
+      "recordPda": "6T4JPfDfkTS749KfSm4yLVFmVzn347n6q4KRH6DZJgUW",
+      "owner": "FRAtq2i6Y9GhobFdhfRDXniXonnXtq3Hxrbz52ae5jyu",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "47H3GXGRvixYhksyru644NWpTGmXBFU39xGS97EBHvNB",
+      "owner": "14LwGeVuHoK9VNH7mKV8M2TMDSvLLwQC8aEc78wsRsXU",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "4AXgJ4WSSsFEXyoKw4SBuWZnfVbxinSRwBi4pAkTd2xU",
+      "owner": "4iLKPktbULdmN9xf5T8bFq6LGCcDapo3g2f1dP23fuUH",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "6kmrZiP2wj7gaeChyJUudkz4GoNXuV5gQkohJni7SpJt",
+      "owner": "wCgpRAkv5Z5hVaNGcjRbos4Z4vueosFcPcF7W5XP9b7",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "26g99Ha3H4XeZTTgW1VrHvWb3MvfLxXAczHare7SaDVh",
+      "owner": "HeCy6bqn76SPnZ6uhAEdUfUBWxgE5EEYiXHjUh8Mi4M8",
+      "positionCount": 0,
+      "totalPositions": 0,
+      "findings": []
+    },
+    {
+      "recordPda": "CYjpQg8q7dQnFMb57A8jXDAeALSuPxP8fsK6rJDf5UZd",
+      "owner": "Ah5tYKfoWMqnzqEof5m2QaLeNzoguESfNHLzQ58yXNzT",
+      "positionCount": 2,
+      "totalPositions": 2,
+      "findings": [
+        {
+          "reasons": [
+            "token_balance (13137218597224775680) > total supply (10^18)",
+            "original_balance (13137218597224775680) > total supply (10^18)"
+          ],
+          "position": {
+            "entryPrice": "4338368235503616",
+            "initialSol": "869660819456",
+            "tokenBalance": "13137218597224775680",
+            "unlockedBps": 0,
+            "originalBalance": "13137218597224775680",
+            "soldBefore5x": false,
+            "claimed": false
+          },
+          "positionIndex": 1
+        }
+      ]
+    },
+    {
+      "recordPda": "9uMDwP2Kfw9T5VhebhY4pSmv7JHHKv4VzmCXYWEZbZAr",
+      "owner": "3GH1W2XkkizUXtjv9xc8m3Fg1pByQFZwxH1pYdvc8DDv",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "7SdRhCUqoW6Ynsbq2WC3Jw5ZS2P4uND8yjnbELwcPjsm",
+      "owner": "67Mus8wYfpTWYU25Kwmhxgxna9BzRtcHuFZXhDWECin7",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "2Qj8WF3fyWqiuUeaEn6QnukYnZxoUEZkMDBUnAU1tbAT",
+      "owner": "8JY6GMioWawkWdkGzdnePQJ8BWLt2ZqKJsZPLzH1K6a7",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "Hdci31wdBKff5v2WcW53SAAiBV7rXtph2kvjDDh8onnk",
+      "owner": "7QSXm7apeGy6eWo9gWYQTLQjQ9SY3oonm71mVukfqhpf",
+      "positionCount": 0,
+      "totalPositions": 0,
+      "findings": []
+    },
+    {
+      "recordPda": "GRbgatdfPp9fxs7ZQNfD5ix8UiAs8eztF1jy4TTrXRR2",
+      "owner": "BWDHeemo6egpX9eMj8JfqBFG3mYuqP1vosfYZH3HDUro",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    },
+    {
+      "recordPda": "Hxq96zQacVboKtxgTpiZy5hZVoFB1t34w5uZ5coQwrDT",
+      "owner": "C8txgVCoKcuGLpyg4ZHBvq1q17gdkWutHYURAxQxNXnD",
+      "positionCount": 1,
+      "totalPositions": 1,
+      "findings": []
+    }
+  ]
+}

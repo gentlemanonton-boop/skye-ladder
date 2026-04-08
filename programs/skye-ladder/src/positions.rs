@@ -182,6 +182,33 @@ fn find_mergeable_position(positions: &[Position], price: u64) -> Option<usize> 
     })
 }
 
+/// Return the cost basis of the tokens still in this position.
+///
+/// `initial_sol` is set at buy time and represents the cost of the ORIGINAL
+/// token amount. After partial sells, that figure overstates the cost basis
+/// of what's left. Scale it down proportionally so merges and migrations
+/// don't double-count cost from tokens that have already been sold.
+fn scaled_initial_sol(pos: &Position) -> u128 {
+    let bal = pos.token_balance as u128;
+    if bal == 0 {
+        return 0;
+    }
+    let original = if pos.original_balance >= pos.token_balance && pos.original_balance > 0 {
+        pos.original_balance as u128
+    } else {
+        // Either the field was never set or it has drifted below current
+        // balance — treat current balance as the basis denominator so we
+        // never report a cost basis larger than initial_sol itself.
+        bal
+    };
+    if original == 0 {
+        return 0;
+    }
+    (pos.initial_sol as u128)
+        .saturating_mul(bal)
+        / original
+}
+
 /// Merge a new buy into an existing position using weighted average entry price.
 fn merge_into_position(
     existing: &mut Position,
@@ -262,12 +289,21 @@ fn merge_closest_pair(positions: &mut Vec<Position>) -> Result<()> {
     // Merge b into a
     let pos_b = positions[merge_b];
 
-    let total_cost = (positions[merge_a].initial_sol as u128)
-        .checked_add(pos_b.initial_sol as u128)
+    // Scale each side's `initial_sol` by the un-sold fraction so we cost-basis
+    // only the tokens that actually still exist. Using the raw stale
+    // `initial_sol` values double-counts cost from tokens that were already
+    // sold and inflates the merged position's perceived investment.
+    let cost_a = scaled_initial_sol(&positions[merge_a]);
+    let cost_b = scaled_initial_sol(&pos_b);
+    let total_cost = cost_a
+        .checked_add(cost_b)
         .ok_or(SkyeLadderError::MathOverflow)?;
+
     let total_tokens = (positions[merge_a].token_balance as u128)
         .checked_add(pos_b.token_balance as u128)
         .ok_or(SkyeLadderError::MathOverflow)?;
+
+    require!(total_tokens > 0, SkyeLadderError::ZeroTokens);
 
     let new_entry = total_cost
         .checked_mul(PRICE_SCALE)
@@ -278,18 +314,13 @@ fn merge_closest_pair(positions: &mut Vec<Position>) -> Result<()> {
     positions[merge_a].entry_price = new_entry as u64;
     positions[merge_a].initial_sol = total_cost as u64;
     positions[merge_a].token_balance = total_tokens as u64;
-    // Sum original_balances
-    let orig_a = if positions[merge_a].original_balance > 0 {
-        positions[merge_a].original_balance as u128
-    } else {
-        positions[merge_a].token_balance as u128
-    };
-    let orig_b = if pos_b.original_balance > 0 {
-        pos_b.original_balance as u128
-    } else {
-        pos_b.token_balance as u128
-    };
-    positions[merge_a].original_balance = orig_a.saturating_add(orig_b) as u64;
+    // CRITICAL: original_balance reflects the merged TOKEN COUNT, not the sum
+    // of two stale high-water marks. The previous version produced
+    // original_balance ≈ 2× supply for two heavily-sold inputs, which then
+    // tripped the corruption sanitizer and wiped the user's unlock progress.
+    // After this fix, the merged position behaves like a fresh combined
+    // buy at the weighted-average entry price.
+    positions[merge_a].original_balance = total_tokens as u64;
     // Keep the higher unlocked_bps of the two
     positions[merge_a].unlocked_bps =
         positions[merge_a].unlocked_bps.max(pos_b.unlocked_bps);
@@ -640,5 +671,140 @@ mod tests {
         assert_eq!(positions[0].entry_price, price(0.00001));
         // Second position is the merged one with 200M tokens
         assert_eq!(positions[1].token_balance, 200_000_000);
+    }
+
+    // ── Regression: merge_closest_pair must not inflate original_balance ──
+    //
+    // Two positions that have each been heavily sold should merge into a
+    // position whose original_balance equals the sum of the REMAINING token
+    // balances, not the sum of the two stale high-water marks. The previous
+    // bug summed the high-water marks, producing a merged record whose
+    // original/balance ratio was huge enough to trip the corruption
+    // sanitizer and silently wipe the user's unlock progress.
+    #[test]
+    fn test_merge_closest_pair_no_original_balance_inflation() {
+        let mut positions = vec![
+            Position {
+                entry_price: price(0.00001),
+                initial_sol: 10_000_000_000,
+                token_balance: 10_000_000,        // sold 99%
+                unlocked_bps: 7_500,
+                original_balance: 1_000_000_000,  // bought 1B
+                sold_before_5x: false,
+                claimed: false,
+            },
+            Position {
+                entry_price: price(0.0000105),
+                initial_sol: 10_500_000_000,
+                token_balance: 10_000_000,        // sold 99%
+                unlocked_bps: 7_500,
+                original_balance: 1_000_000_000,
+                sold_before_5x: false,
+                claimed: false,
+            },
+        ];
+
+        merge_closest_pair(&mut positions).unwrap();
+
+        assert_eq!(positions.len(), 1);
+        let merged = &positions[0];
+
+        // Token balance must be the sum of the remaining balances.
+        assert_eq!(merged.token_balance, 20_000_000);
+
+        // CRITICAL: original_balance must equal the merged token count, NOT
+        // the sum of the two original_balance values (which would be 2B).
+        assert_eq!(
+            merged.original_balance, 20_000_000,
+            "merged original_balance must reflect actual tokens, not the sum of stale high-water marks"
+        );
+
+        // The corruption sanitizer's >100x ratio rule (now removed, but worth
+        // verifying we'd no longer trip it either way).
+        assert!(merged.original_balance / merged.token_balance.max(1) <= 100);
+    }
+
+    // Two heavily sold positions whose initial_sol values were set against
+    // their ORIGINAL token amounts must scale down proportionally during a
+    // forced merge. The merged cost basis should match the actual remaining
+    // tokens, not the sum of stale full-buy costs.
+    #[test]
+    fn test_merge_closest_pair_scales_initial_sol() {
+        let mut positions = vec![
+            Position {
+                entry_price: price(0.000001),
+                initial_sol: 1_000_000_000, // cost basis for 1B tokens
+                token_balance: 100_000_000, // 10% remaining
+                unlocked_bps: 5_000,
+                original_balance: 1_000_000_000,
+                sold_before_5x: false,
+                claimed: false,
+            },
+            Position {
+                entry_price: price(0.0000011),
+                initial_sol: 1_100_000_000,
+                token_balance: 100_000_000,
+                unlocked_bps: 5_000,
+                original_balance: 1_000_000_000,
+                sold_before_5x: false,
+                claimed: false,
+            },
+        ];
+
+        merge_closest_pair(&mut positions).unwrap();
+
+        let merged = &positions[0];
+        // Each side contributes initial_sol * (100M / 1B) = 1/10 of original.
+        // 100M + 110M = 210M.
+        assert_eq!(merged.initial_sol, 210_000_000);
+        assert_eq!(merged.token_balance, 200_000_000);
+        assert_eq!(merged.original_balance, 200_000_000);
+    }
+
+    // ── Regression: scaled_initial_sol helper sanity ──
+    #[test]
+    fn test_scaled_initial_sol_partial_sell() {
+        let pos = Position {
+            entry_price: price(0.000001),
+            initial_sol: 1_000_000_000,
+            token_balance: 250_000_000, // 25% remaining
+            unlocked_bps: 7_500,
+            original_balance: 1_000_000_000,
+            sold_before_5x: false,
+            claimed: false,
+        };
+        // 25% of original cost basis
+        assert_eq!(scaled_initial_sol(&pos), 250_000_000);
+    }
+
+    #[test]
+    fn test_scaled_initial_sol_empty_position() {
+        let pos = Position {
+            entry_price: price(0.000001),
+            initial_sol: 1_000_000_000,
+            token_balance: 0,
+            unlocked_bps: 0,
+            original_balance: 1_000_000_000,
+            sold_before_5x: false,
+            claimed: false,
+        };
+        assert_eq!(scaled_initial_sol(&pos), 0);
+    }
+
+    #[test]
+    fn test_scaled_initial_sol_missing_original_balance() {
+        // Legacy position with original_balance unset (== 0). Helper should
+        // fall back to using current balance as the denominator and return
+        // the full initial_sol unchanged.
+        let pos = Position {
+            entry_price: price(0.000001),
+            initial_sol: 500_000_000,
+            token_balance: 500_000_000,
+            unlocked_bps: 0,
+            original_balance: 0,
+            sold_before_5x: false,
+            claimed: false,
+        };
+        assert_eq!(scaled_initial_sol(&pos), 500_000_000);
     }
 }

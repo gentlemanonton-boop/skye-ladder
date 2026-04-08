@@ -247,8 +247,12 @@ async function main() {
     publicKey: w.publicKey.toBase58(),
     secretKey: Array.from(w.secretKey),
   }));
-  const outPath = path.join(__dirname, ".test-wallets.json");
-  fs.writeFileSync(outPath, JSON.stringify(keypairData, null, 2));
+  // Test wallet secret keys live OUTSIDE the repo to keep them out of any
+  // accidental commit, bundle, or sync. Override with SKYE_TEST_WALLETS env var.
+  const outPath = process.env.SKYE_TEST_WALLETS
+    || path.join(process.env.HOME!, ".skye", "test-wallets.json");
+  fs.mkdirSync(path.dirname(outPath), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(outPath, JSON.stringify(keypairData, null, 2), { mode: 0o600 });
   console.log(`\n  Wallet keypairs saved to ${outPath}`);
   console.log("═══════════════════════════════════════════════════════════════");
 }
