@@ -118,7 +118,11 @@ export default function App() {
             <button onClick={() => window.location.reload()} className="text-skye-400 text-[13px] font-semibold hover:underline">Retry</button>
           </div>
         ) : (
-          <>
+          // `key={tab}` forces React to mount a fresh tree on every tab
+          // change, which restarts the .tab-content animation defined in
+          // index.css. The hard cut becomes a 220ms fade with a small
+          // stagger across child cards.
+          <div key={tab} className="tab-content space-y-5 sm:space-y-6">
             {tab === "trade" && (
               <>
                 <SwapPanel currentPrice={currentPrice} solUsd={solUsd} pool={pool} positions={positions} solBalance={solBalance} skyeBalance={skyeBalance} />
@@ -131,7 +135,7 @@ export default function App() {
             {tab === "launch" && <LaunchTab />}
             {tab === "discover" && <DiscoverTab />}
             {tab === "about" && <AboutTab />}
-          </>
+          </div>
         )}
       </main>
 
