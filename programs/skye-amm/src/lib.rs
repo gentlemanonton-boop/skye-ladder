@@ -35,8 +35,8 @@ pub mod skye_amm {
         instructions::remove_liquidity::handler(ctx, lp_amount, min_skye_out, min_wsol_out)
     }
 
-    pub fn set_fee_config(ctx: Context<SetFeeConfig>, team_wallet: Pubkey, diamond_vault: Pubkey, strong_vault: Pubkey) -> Result<()> {
-        instructions::set_fee_config::handler(ctx, team_wallet, diamond_vault, strong_vault)
+    pub fn set_fee_config(ctx: Context<SetFeeConfig>, team_wallet: Pubkey) -> Result<()> {
+        instructions::set_fee_config::handler(ctx, team_wallet)
     }
 
     pub fn swap<'info>(

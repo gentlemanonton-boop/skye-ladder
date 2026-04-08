@@ -428,18 +428,25 @@ mod fuzz_tests {
 
                 let prev_hwm = pos.unlocked_bps;
                 let result = effective_unlock_bps(cp, &mut pos);
-                if let Ok(bps) = result {
-                    // Invariant 5: High-water mark never decreases
+                if let Ok(_bps) = result {
+                    // Invariant: the STORED high-water mark never decreases.
+                    // This holds in every phase — Phase 1 simply doesn't write
+                    // it (b4c761d), Phase 2+ only writes a higher value.
                     assert!(
                         pos.unlocked_bps >= prev_hwm,
-                        "High-water decreased: {} → {} at price {}",
+                        "Stored high-water decreased: {} → {} at price {}",
                         prev_hwm, pos.unlocked_bps, cp
                     );
-                    assert!(
-                        bps >= prev_hwm,
-                        "Effective bps {} < prev high-water {}",
-                        bps, prev_hwm
-                    );
+                    // NOTE: the previous "effective bps >= prev_hwm" invariant
+                    // was dropped. Under b4c761d, a position that briefly
+                    // visited Phase 2+ and then drops back into Phase 1 (price
+                    // dipped under 2x) returns the live `1/mult` value, which
+                    // can legitimately be below the high-water set during the
+                    // Phase 2 visit. That's intentional — the high-water is
+                    // preserved on disk and resumes governing as soon as
+                    // price re-enters Phase 2+, but Phase 1 sells use the
+                    // live formula to prevent the overshoot exploit fixed
+                    // in b4c761d.
                 }
             }
         }

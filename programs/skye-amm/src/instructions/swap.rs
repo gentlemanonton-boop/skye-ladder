@@ -36,9 +36,10 @@ pub fn handler<'info>(
 
     let pool = &ctx.accounts.pool;
     let fee_bps = pool.fee_bps;
-    let has_fee_config = pool.team_wallet != Pubkey::default()
-        && pool.diamond_vault != Pubkey::default()
-        && pool.strong_vault != Pubkey::default();
+    // The diamond/strong vault fields on Pool are dead state (kept for layout
+    // compatibility with already-deployed pools). The only thing that matters
+    // for the fee split now is whether team_wallet is configured.
+    let has_team_wallet = pool.team_wallet != Pubkey::default();
 
     let skye_mint_key = pool.skye_mint;
     let wsol_mint_key = pool.wsol_mint;
@@ -58,18 +59,17 @@ pub fn handler<'info>(
         )?;
         require!(skye_out >= min_amount_out, SkyeAmmError::SlippageExceeded);
 
-        // Split fee: 50% team, 25% pool, 17.5% diamond, 7.5% strong
-        let (team_fee, _pool_fee, diamond_fee, strong_fee) = if has_fee_config && fee > 0 {
-            math::split_fee(fee)
+        // Split fee: 50% team (treasury), 50% pool (LP).
+        // If no team wallet is configured, the entire fee stays in the pool.
+        let team_fee = if has_team_wallet && fee > 0 {
+            math::split_fee(fee).0
         } else {
-            (0u64, fee, 0u64, 0u64)
+            0u64
         };
 
-        // Update reserves — full amount_in minus team and vault shares enter pool
+        // Reserves receive everything except the team's share.
         let pool_receives = amount_in
-            .checked_sub(team_fee).ok_or(SkyeAmmError::MathOverflow)?
-            .checked_sub(diamond_fee).ok_or(SkyeAmmError::MathOverflow)?
-            .checked_sub(strong_fee).ok_or(SkyeAmmError::MathOverflow)?;
+            .checked_sub(team_fee).ok_or(SkyeAmmError::MathOverflow)?;
         let pool = &mut ctx.accounts.pool;
         pool.wsol_amount = pool.wsol_amount.checked_add(pool_receives)
             .ok_or(SkyeAmmError::MathOverflow)?;
@@ -122,39 +122,6 @@ pub fn handler<'info>(
             }
         }
 
-        // Transfer fees to diamond and strong vaults
-        for (vault_fee, vault_key) in [(diamond_fee, ctx.accounts.pool.diamond_vault), (strong_fee, ctx.accounts.pool.strong_vault)] {
-            if vault_fee > 0 {
-                if let Some(vault_account) = ctx.remaining_accounts.iter().find(|a| a.is_writable && a.key() == vault_key) {
-                    token_interface::transfer_checked(
-                        CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
-                            from: ctx.accounts.user_wsol_account.to_account_info(),
-                            mint: ctx.accounts.wsol_mint.to_account_info(),
-                            to: vault_account.clone(),
-                            authority: ctx.accounts.user.to_account_info(),
-                        }),
-                        vault_fee,
-                        ctx.accounts.wsol_mint.decimals,
-                    )?;
-                } else {
-                    // Vault not provided — falls back to pool
-                    token_interface::transfer_checked(
-                        CpiContext::new(ctx.accounts.token_program.to_account_info(), TransferChecked {
-                            from: ctx.accounts.user_wsol_account.to_account_info(),
-                            mint: ctx.accounts.wsol_mint.to_account_info(),
-                            to: ctx.accounts.wsol_reserve.to_account_info(),
-                            authority: ctx.accounts.user.to_account_info(),
-                        }),
-                        vault_fee,
-                        ctx.accounts.wsol_mint.decimals,
-                    )?;
-                    let pool = &mut ctx.accounts.pool;
-                    pool.wsol_amount = pool.wsol_amount.checked_add(vault_fee)
-                        .ok_or(SkyeAmmError::MathOverflow)?;
-                }
-            }
-        }
-
         // Transfer SKYE out (Token-2022, triggers hook as "buy")
         transfer_token2022_with_hook(
             &ctx.accounts.skye_reserve.to_account_info(),
@@ -168,7 +135,7 @@ pub fn handler<'info>(
             pool_seeds,
         )?;
 
-        msg!("BUY: {} WSOL -> {} SKYE (fee: {} team, {} diamond, {} strong)", amount_in, skye_out, team_fee, diamond_fee, strong_fee);
+        msg!("BUY: {} WSOL -> {} SKYE (team fee: {})", amount_in, skye_out, team_fee);
     } else {
         // ── SELL: SKYE in, WSOL out ──
         let (wsol_out, fee) = math::compute_swap_output(
@@ -176,20 +143,19 @@ pub fn handler<'info>(
         )?;
         require!(wsol_out >= min_amount_out, SkyeAmmError::SlippageExceeded);
 
-        // Fee is on the SKYE input side. But SKYE transfers trigger the hook.
-        // Simpler: take fees from WSOL output instead (pool already has the WSOL).
-        // Recompute: user gets wsol_out minus team and vault shares.
-        let (team_fee, _pool_fee, diamond_fee, strong_fee) = if has_fee_config && fee > 0 {
+        // Fees are charged on the SKYE input side, but SKYE transfers go
+        // through the transfer hook — simpler to take the fee from the WSOL
+        // output instead (pool already holds the WSOL). User receives
+        // wsol_out minus the team's share; the rest stays in pool reserves.
+        let team_fee = if has_team_wallet && fee > 0 {
             let wsol_fee = (wsol_out as u128) * (fee_bps as u128) / 10_000u128;
-            math::split_fee(wsol_fee as u64)
+            math::split_fee(wsol_fee as u64).0
         } else {
-            (0u64, 0u64, 0u64, 0u64)
+            0u64
         };
 
         let user_receives = wsol_out
-            .checked_sub(team_fee).ok_or(SkyeAmmError::MathOverflow)?
-            .checked_sub(diamond_fee).ok_or(SkyeAmmError::MathOverflow)?
-            .checked_sub(strong_fee).ok_or(SkyeAmmError::MathOverflow)?;
+            .checked_sub(team_fee).ok_or(SkyeAmmError::MathOverflow)?;
 
         // Update reserves
         let pool = &mut ctx.accounts.pool;
@@ -242,25 +208,7 @@ pub fn handler<'info>(
             // If team account not provided, fee stays in pool (wsol_out already deducted)
         }
 
-        // Transfer vault fees from pool reserves
-        for (vault_fee, vault_key) in [(diamond_fee, ctx.accounts.pool.diamond_vault), (strong_fee, ctx.accounts.pool.strong_vault)] {
-            if vault_fee > 0 {
-                if let Some(vault_account) = ctx.remaining_accounts.iter().find(|a| a.is_writable && a.key() == vault_key) {
-                    token_interface::transfer_checked(
-                        CpiContext::new_with_signer(ctx.accounts.token_program.to_account_info(), TransferChecked {
-                            from: ctx.accounts.wsol_reserve.to_account_info(),
-                            mint: ctx.accounts.wsol_mint.to_account_info(),
-                            to: vault_account.clone(),
-                            authority: ctx.accounts.pool.to_account_info(),
-                        }, &[pool_seeds]),
-                        vault_fee,
-                        ctx.accounts.wsol_mint.decimals,
-                    )?;
-                }
-            }
-        }
-
-        msg!("SELL: {} SKYE -> {} WSOL (fee: {} team, {} diamond, {} strong)", amount_in, user_receives, team_fee, diamond_fee, strong_fee);
+        msg!("SELL: {} SKYE -> {} WSOL (team fee: {})", amount_in, user_receives, team_fee);
     }
 
     Ok(())

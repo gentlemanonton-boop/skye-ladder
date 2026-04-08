@@ -88,12 +88,20 @@ pub fn compute_withdraw(
     Ok((skye_out as u64, wsol_out as u64))
 }
 
-/// Split fee: 50% team (treasury), 50% pool (LP).
-/// Returns (team, pool, diamond, strong). Diamond/strong are zero.
-pub fn split_fee(fee: u64) -> (u64, u64, u64, u64) {
-    let team = fee / 2;          // 50% to treasury
-    let pool = fee - team;        // 50% to LP (handles odd-lamport remainder)
-    (team, pool, 0, 0)
+/// Split a swap fee 50/50 between the protocol team and the LP pool.
+///
+/// - **team** = 50% → goes to the treasury WSOL ATA configured via
+///   `set_fee_config`. This is the protocol/team's withdrawable revenue.
+/// - **pool** = 50% → stays inside the pool reserves, compounding into the
+///   constant-product LP for the benefit of liquidity providers.
+///
+/// The previous implementation split fees four ways (team / pool / diamond /
+/// strong) to feed `claim_rewards` style holder incentives. That model was
+/// scrapped — diamond/strong vaults no longer exist.
+pub fn split_fee(fee: u64) -> (u64, u64) {
+    let team = fee / 2;       // 50% to treasury
+    let pool = fee - team;    // 50% to LP (handles odd-lamport remainder)
+    (team, pool)
 }
 
 /// Integer square root via Newton's method.
@@ -131,23 +139,27 @@ mod tests {
     }
 
     #[test]
-    fn test_fee_split() {
-        let (team, pool, diamond, strong) = split_fee(1000);
-        assert_eq!(team, 500);     // 50%
-        assert_eq!(diamond, 175);  // 17.5%
-        assert_eq!(strong, 75);    // 7.5%
-        assert_eq!(pool, 250);     // 25%
-        assert_eq!(team + pool + diamond + strong, 1000);
+    fn test_fee_split_50_50() {
+        let (team, pool) = split_fee(1000);
+        assert_eq!(team, 500);
+        assert_eq!(pool, 500);
+        assert_eq!(team + pool, 1000);
     }
 
     #[test]
-    fn test_fee_split_small() {
-        let (team, pool, diamond, strong) = split_fee(10);
+    fn test_fee_split_odd_remainder() {
+        // Odd fee → integer division floors team, pool gets the extra lamport.
+        let (team, pool) = split_fee(11);
         assert_eq!(team, 5);
-        assert_eq!(diamond, 1);
-        assert_eq!(strong, 0);
-        // pool gets remainder
-        assert_eq!(team + pool + diamond + strong, 10);
+        assert_eq!(pool, 6);
+        assert_eq!(team + pool, 11);
+    }
+
+    #[test]
+    fn test_fee_split_zero() {
+        let (team, pool) = split_fee(0);
+        assert_eq!(team, 0);
+        assert_eq!(pool, 0);
     }
 
     #[test]

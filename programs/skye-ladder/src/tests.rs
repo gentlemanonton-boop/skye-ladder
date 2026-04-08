@@ -177,14 +177,25 @@ mod comprehensive {
         assert_eq!(p.unlocked_bps, 10_000);
     }
 
-    // 13. High-water at 0 (fresh position, underwater)
+    // 13. Underwater position returns 100% live but does NOT mutate the
+    //     stored high-water mark in Phase 1.
+    //
+    //     UPDATED for `b4c761d Phase 1: skip high-water mark, use live formula`.
+    //     Reason: in Phase 1 (mult < 2x) the unlock formula is `1/mult`,
+    //     which decreases as price rises. Writing it to the high-water mark
+    //     would let users sell-cheap-then-sell-more once price recovered,
+    //     extracting more than their initial. So Phase 1 returns the live
+    //     value but leaves `unlocked_bps` untouched.
     #[test]
     fn test_13_fresh_position_underwater() {
         let mut p = pos(0.000003, 1_000_000_000);
         assert_eq!(p.unlocked_bps, 0);
         let bps = effective_unlock_bps(price_at_mult(p.entry_price, 0.5), &mut p).unwrap();
-        assert_eq!(bps, 10_000);
-        assert_eq!(p.unlocked_bps, 10_000);
+        assert_eq!(bps, 10_000, "underwater should report 100% sellable live");
+        assert_eq!(
+            p.unlocked_bps, 0,
+            "Phase 1 must NOT mutate the high-water mark (b4c761d)"
+        );
     }
 
     // 14. Sellable tokens rounds DOWN
