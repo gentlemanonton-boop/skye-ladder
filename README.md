@@ -2,7 +2,7 @@
 
 Structured sell-restriction protocol on Solana. Token-2022 Transfer Hook enforces per-wallet, milestone-based sell limits that scale with price appreciation. Buys are always unrestricted. Only sells are gated.
 
-**Frontend:** [frontend-three-virid-62.vercel.app](https://frontend-three-virid-62.vercel.app)
+**Frontend:** [skyefall.gg](https://skyefall.gg)
 
 ## How It Works
 
