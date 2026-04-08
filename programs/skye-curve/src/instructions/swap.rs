@@ -74,6 +74,17 @@ pub fn handler<'info>(
 
     let curve = &ctx.accounts.curve;
     require!(!curve.graduated, SkyeCurveError::AlreadyGraduated);
+    // Block new swaps the moment the curve hits the graduation threshold.
+    // The curve only flips `graduated = true` once `graduate.rs` has actually
+    // migrated the assets to the AMM pool — so this `<` check stops trades
+    // BEFORE the auto-flip that used to lock the curve forever (the prior
+    // bug was: a single buy could push realSol over 85, set graduated = true,
+    // and then graduate.rs would fail its own `!graduated` constraint and
+    // never run, stranding all assets in the curve).
+    require!(
+        curve.real_sol_reserve < curve.graduation_sol,
+        SkyeCurveError::ReadyToGraduate
+    );
 
     let mint_key = curve.mint;
     let curve_bump = curve.bump;
@@ -150,10 +161,14 @@ pub fn handler<'info>(
             curve_seeds,
         )?;
 
-        // Check graduation
+        // Surface a clear log when the buy that pushes the curve over the
+        // threshold lands. The `graduated` flag is NOT flipped here — that
+        // happens at the end of `graduate.rs` once assets are actually
+        // migrated to the AMM. The next call (swap or graduate) sees the
+        // new `real_sol_reserve >= graduation_sol` state and routes
+        // appropriately: swaps fail with `ReadyToGraduate`, graduate runs.
         if ctx.accounts.curve.real_sol_reserve >= ctx.accounts.curve.graduation_sol {
-            ctx.accounts.curve.graduated = true;
-            msg!("GRADUATED at {} SOL!", ctx.accounts.curve.real_sol_reserve);
+            msg!("READY TO GRADUATE at {} SOL — call graduate to migrate", ctx.accounts.curve.real_sol_reserve);
         }
 
         msg!("CURVE BUY: {} SOL -> {} tokens", sol_amount, tokens_out);

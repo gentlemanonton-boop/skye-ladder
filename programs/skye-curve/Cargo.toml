@@ -23,3 +23,8 @@ spl-token-2022 = { version = "3", features = ["no-entrypoint"] }
 spl-transfer-hook-interface = "0.6"
 spl-tlv-account-resolution = "0.6"
 solana-program = "1.18"
+# CPI into the AMM so graduate.rs can call seed_pool_from_curve atomically.
+# `cpi` feature pulls in Anchor's generated cross-program invocation helpers
+# and skips the AMM's own BPF entrypoint (no-entrypoint) so the two crates
+# can compile together without symbol collisions.
+skye-amm = { path = "../skye-amm", features = ["cpi"] }

@@ -16,4 +16,6 @@ pub enum SkyeAmmError {
     InsufficientLpTokens,
     #[msg("Fee basis points must be <= 10000")]
     InvalidFee,
+    #[msg("Pool has already been seeded — seed_pool_from_curve is one-shot")]
+    AlreadySeeded,
 }

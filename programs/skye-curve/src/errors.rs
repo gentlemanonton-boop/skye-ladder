@@ -16,4 +16,6 @@ pub enum SkyeCurveError {
     Unauthorized,
     #[msg("Invalid configuration")]
     InvalidConfig,
+    #[msg("Curve has reached graduation threshold — call graduate to migrate")]
+    ReadyToGraduate,
 }

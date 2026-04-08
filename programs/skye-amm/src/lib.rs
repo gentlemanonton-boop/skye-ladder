@@ -47,4 +47,16 @@ pub mod skye_amm {
     ) -> Result<()> {
         instructions::swap::handler(ctx, amount_in, min_amount_out, buy)
     }
+
+    /// Bootstrap a freshly-initialized pool with reserves transferred from
+    /// a graduated bonding curve. Mints sqrt(skye*wsol) LP tokens and burns
+    /// them to the Solana incinerator, locking principal liquidity forever.
+    /// Only callable by the curve program.
+    pub fn seed_pool_from_curve(
+        ctx: Context<SeedPoolFromCurve>,
+        skye_amount: u64,
+        wsol_amount: u64,
+    ) -> Result<()> {
+        instructions::seed_pool_from_curve::handler(ctx, skye_amount, wsol_amount)
+    }
 }
