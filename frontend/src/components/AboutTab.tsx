@@ -41,7 +41,6 @@ export function AboutTab() {
             { icon: "📊", text: "5 unlock phases from 1x to 15x — you earn your exit" },
             { icon: "🏊", text: "Underwater? Sell 100%. No one is EVER trapped" },
             { icon: "⬆️", text: "Compressed growth between milestones — flippers can't game the ladder" },
-            { icon: "💎", text: "Diamond hands get rewarded from fee vaults at 15x" },
           ].map((item, i) => (
             <div key={i} className="flex items-start gap-3 bg-skye-500/5 rounded-xl px-4 py-3 border border-skye-500/10">
               <span className="text-[18px] flex-shrink-0">{item.icon}</span>
