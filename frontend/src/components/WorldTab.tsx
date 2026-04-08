@@ -164,10 +164,15 @@ export function WorldTab() {
     }
   }, [loading]);
 
+  // Horizontal placement of each card. The range is constrained so that even
+  // the widest card doesn't overflow on a ~360px-wide phone (the previous
+  // 12–78% range pushed cards off both edges, especially on the right where
+  // the vertical MC scale already eats ~20px). The 22–74% window leaves
+  // breathing room for the zone labels on the left and the MC scale on the right.
   function getX(mint: string): number {
     let hash = 0;
     for (let i = 0; i < mint.length; i++) hash = ((hash << 5) - hash + mint.charCodeAt(i)) | 0;
-    return 12 + (Math.abs(hash) % 66);
+    return 22 + (Math.abs(hash) % 52);
   }
 
   return (
@@ -295,14 +300,10 @@ export function WorldTab() {
             const floatX = Math.sin(time * 0.3 + idx * 3.1) * 3;
 
             const colors = {
-              HEAVEN: { bg: "rgba(60,50,10,0.85)", border: "rgba(234,179,8,0.4)", glow: "0 0 30px rgba(234,179,8,0.4), 0 0 60px rgba(234,179,8,0.15)", mc: "text-yellow-300", bar: "linear-gradient(90deg, #eab308, #fbbf24)",
-                rockTop: "#caa86a", rockMid: "#7a5a2a", rockBottom: "#3a2810", grass: "#d4b755" },
-              CLOUDS: { bg: "rgba(15,25,50,0.85)", border: "rgba(59,130,246,0.3)", glow: "0 0 25px rgba(59,130,246,0.3), 0 0 50px rgba(59,130,246,0.1)", mc: "text-blue-300", bar: "linear-gradient(90deg, #3b82f6, #60a5fa)",
-                rockTop: "#a8b8c8", rockMid: "#4a5a78", rockBottom: "#1a2438", grass: "#6dbf8f" },
-              STORM:  { bg: "rgba(25,10,40,0.85)", border: "rgba(147,51,234,0.3)", glow: "0 0 25px rgba(147,51,234,0.3), 0 0 50px rgba(147,51,234,0.1)", mc: "text-purple-300", bar: "linear-gradient(90deg, #8b5cf6, #a78bfa)",
-                rockTop: "#8a6ba8", rockMid: "#3e2a55", rockBottom: "#180a28", grass: "#5a3a78" },
-              CHAOS:  { bg: "rgba(30,8,8,0.9)", border: "rgba(239,68,68,0.3)", glow: "0 0 20px rgba(239,68,68,0.3), 0 0 40px rgba(239,68,68,0.1)", mc: "text-red-300", bar: "linear-gradient(90deg, #ef4444, #f97316)",
-                rockTop: "#9a4a2a", rockMid: "#4a1a08", rockBottom: "#1a0500", grass: "#7a2510" },
+              HEAVEN: { bg: "rgba(60,50,10,0.85)", border: "rgba(234,179,8,0.4)", glow: "0 0 30px rgba(234,179,8,0.4), 0 0 60px rgba(234,179,8,0.15)", mc: "text-yellow-300", bar: "linear-gradient(90deg, #eab308, #fbbf24)" },
+              CLOUDS: { bg: "rgba(15,25,50,0.85)", border: "rgba(59,130,246,0.3)", glow: "0 0 25px rgba(59,130,246,0.3), 0 0 50px rgba(59,130,246,0.1)", mc: "text-blue-300", bar: "linear-gradient(90deg, #3b82f6, #60a5fa)" },
+              STORM:  { bg: "rgba(25,10,40,0.85)", border: "rgba(147,51,234,0.3)", glow: "0 0 25px rgba(147,51,234,0.3), 0 0 50px rgba(147,51,234,0.1)", mc: "text-purple-300", bar: "linear-gradient(90deg, #8b5cf6, #a78bfa)" },
+              CHAOS:  { bg: "rgba(30,8,8,0.9)", border: "rgba(239,68,68,0.3)", glow: "0 0 20px rgba(239,68,68,0.3), 0 0 40px rgba(239,68,68,0.1)", mc: "text-red-300", bar: "linear-gradient(90deg, #ef4444, #f97316)" },
             }[zone];
 
             return (
@@ -318,15 +319,15 @@ export function WorldTab() {
                     background: zone === "HEAVEN" ? "rgba(234,179,8,0.2)" : zone === "CHAOS" ? "rgba(239,68,68,0.15)" : zone === "STORM" ? "rgba(147,51,234,0.15)" : "rgba(59,130,246,0.12)",
                   }} />
 
-                  {/* Island card */}
-                  <div className="relative rounded-2xl border backdrop-blur-md px-4 py-3 min-w-[130px] max-w-[180px]" style={{
+                  {/* Island card — narrower on mobile so it can't overflow */}
+                  <div className="relative rounded-2xl border backdrop-blur-md px-3 py-2.5 sm:px-4 sm:py-3 min-w-[108px] max-w-[140px] sm:min-w-[130px] sm:max-w-[180px]" style={{
                     background: colors.bg,
                     borderColor: colors.border,
                     boxShadow: colors.glow,
                   }}>
                     {/* Header */}
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-white/10 flex items-center justify-center">
+                    <div className="flex items-center gap-2 sm:gap-2.5">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl overflow-hidden flex-shrink-0 bg-white/10 flex items-center justify-center">
                         {token.image ? (
                           <img src={token.image} alt="" className="w-full h-full object-cover" />
                         ) : (
@@ -334,29 +335,29 @@ export function WorldTab() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[12px] font-bold text-white leading-tight truncate">{token.name}</div>
-                        <div className="text-[10px] text-white/40">${token.symbol}</div>
+                        <div className="text-[11px] sm:text-[12px] font-bold text-white leading-tight truncate">{token.name}</div>
+                        <div className="text-[9px] sm:text-[10px] text-white/40 truncate">${token.symbol}</div>
                       </div>
                     </div>
 
                     {/* MC */}
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className={`font-pixel text-[10px] ${colors.mc}`}>
+                    <div className="mt-1.5 sm:mt-2 flex items-center justify-between gap-1">
+                      <span className={`font-pixel text-[9px] sm:text-[10px] ${colors.mc} truncate`}>
                         {formatUsd(token.mc, token.mc >= 1000 ? 0 : 2)}
                       </span>
                       {token.graduated && (
-                        <span className="font-pixel text-[7px] bg-yellow-500/20 text-yellow-300 px-1.5 py-0.5 rounded">GRAD</span>
+                        <span className="font-pixel text-[7px] bg-yellow-500/20 text-yellow-300 px-1 sm:px-1.5 py-0.5 rounded flex-shrink-0">GRAD</span>
                       )}
                     </div>
 
                     {/* Progress bar */}
-                    <div className="mt-1.5 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div className="mt-1 sm:mt-1.5 h-1 sm:h-1.5 bg-white/5 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{
                         width: `${Math.min(100, (token.realSol / 1e9 / 85) * 100)}%`,
                         background: colors.bar,
                       }} />
                     </div>
-                    <div className="text-[8px] text-white/25 mt-0.5 tabular-nums">{(token.realSol / 1e9).toFixed(1)} / 85 SOL</div>
+                    <div className="text-[7px] sm:text-[8px] text-white/25 mt-0.5 tabular-nums">{(token.realSol / 1e9).toFixed(1)} / 85 SOL</div>
 
                     {/* Socials — visible on hover */}
                     {(token.website || token.twitter || token.telegram || token.discord) && (
@@ -385,75 +386,12 @@ export function WorldTab() {
                     )}
                   </div>
 
-                  {/* ─── Floating sky island ─── */}
-                  {/* Rocky underside that hangs below the card. The card sits
-                      on top of this like a building on the island's plateau. */}
-                  <svg
-                    className="block mx-auto -mt-[2px] pointer-events-none"
-                    width="100%"
-                    height="60"
-                    viewBox="0 0 180 60"
-                    preserveAspectRatio="none"
-                    style={{ filter: `drop-shadow(0 8px 12px rgba(0,0,0,0.55))` }}
-                  >
-                    <defs>
-                      <linearGradient id={`island-rock-${idx}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={colors.rockTop} />
-                        <stop offset="55%" stopColor={colors.rockMid} />
-                        <stop offset="100%" stopColor={colors.rockBottom} />
-                      </linearGradient>
-                    </defs>
-                    {/* Main rocky chunk — wider at top, jagged taper to a point */}
-                    <path
-                      d="
-                        M 8 2
-                        L 172 2
-                        L 168 10
-                        L 174 18
-                        L 162 26
-                        L 150 36
-                        L 132 44
-                        L 110 50
-                        L 92 56
-                        L 78 50
-                        L 60 46
-                        L 42 38
-                        L 28 28
-                        L 18 18
-                        L 12 10
-                        Z
-                      "
-                      fill={`url(#island-rock-${idx})`}
-                      stroke={colors.rockBottom}
-                      strokeWidth="0.5"
-                    />
-                    {/* Grass / moss crown along the top edge where the card meets the rock */}
-                    <path
-                      d="
-                        M 8 2
-                        Q 18 5 28 2
-                        Q 40 6 52 2
-                        Q 64 5 76 2
-                        Q 90 6 104 2
-                        Q 118 5 130 2
-                        Q 144 6 156 2
-                        Q 168 5 172 2
-                        L 172 4
-                        L 8 4
-                        Z
-                      "
-                      fill={colors.grass}
-                      opacity="0.85"
-                    />
-                    {/* A few crack/shadow lines to give the rock texture */}
-                    <path
-                      d="M 50 12 L 56 28 M 90 18 L 88 38 M 130 14 L 124 32"
-                      stroke={colors.rockBottom}
-                      strokeWidth="0.8"
-                      opacity="0.5"
-                      fill="none"
-                    />
-                  </svg>
+                  {/* Shadow under island */}
+                  <div className="mx-auto -mt-1" style={{
+                    width: "70%", height: 10,
+                    background: "radial-gradient(ellipse, rgba(0,0,0,0.4) 0%, transparent 70%)",
+                    borderRadius: "50%",
+                  }} />
                 </div>
               </div>
             );
