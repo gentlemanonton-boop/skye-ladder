@@ -201,24 +201,6 @@ function WalletMenu({ address, solBalance, onDisconnect }: { address: string; so
             <span className="text-[13px] text-ink-primary">Copy Address</span>
           </button>
 
-          {/* Change Wallet — greyed out for future */}
-          <div className="w-full flex items-center gap-3 px-4 py-3 opacity-30 cursor-not-allowed">
-            <svg className="w-4 h-4 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-            <div>
-              <span className="text-[13px] text-ink-primary block">Change Wallet</span>
-              <span className="text-[10px] text-ink-faint">Coming soon</span>
-            </div>
-          </div>
-
-          {/* skyefall.gg — greyed out for future */}
-          <div className="w-full flex items-center gap-3 px-4 py-3 opacity-30 cursor-not-allowed">
-            <svg className="w-4 h-4 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>
-            <div>
-              <span className="text-[13px] text-ink-primary block">skyefall.gg</span>
-              <span className="text-[10px] text-ink-faint">Coming soon</span>
-            </div>
-          </div>
-
           <div className="border-t border-white/5" />
 
           {/* Disconnect */}
