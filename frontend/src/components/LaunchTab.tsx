@@ -447,12 +447,8 @@ export function LaunchTab() {
 
   return (
     <div className="space-y-6">
-      <div className="glass p-6 text-center space-y-3">
-        <h2 className="font-pixel text-[14px] sm:text-[16px] text-skye-400 tracking-wide">LAUNCHPAD</h2>
-      </div>
-
       <div className="glass p-5 sm:p-6 space-y-4">
-        <h3 className="font-pixel text-[10px] text-skye-400 tracking-wider mb-4">CREATE TOKEN</h3>
+        <h3 className="font-pixel text-[10px] text-skye-400 tracking-wider mb-4">Create coin</h3>
 
         {/* Phantom warning notice */}
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2.5">
