@@ -6,6 +6,9 @@ before "fixing" anything `npm audit` reports** — most of the findings
 are false positives whose suggested fixes would brick the app.
 
 Last reviewed: 2026-04-08
+Helius API key last rotated: 2026-04-08
+Helius plan: Developer (paid) — RPC Access Control Rules enforced
+Helius referrer allowlist: skyefall.gg, www.skyefall.gg
 
 ---
 
