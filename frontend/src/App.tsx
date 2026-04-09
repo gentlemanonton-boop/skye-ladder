@@ -54,7 +54,7 @@ export default function App() {
   return (
     <div className="min-h-screen relative">
       {/* Header */}
-      <header className="sticky top-0 z-20 glass border-b border-white/5">
+      <header className="sticky top-0 z-20 glass !rounded-none border-b border-white/5">
         <div className="max-w-2xl mx-auto px-4 sm:px-5 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <img src={LOGO} alt="SKYE" className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl shadow-lg flex-shrink-0" />
@@ -84,7 +84,7 @@ export default function App() {
       </header>
 
       {/* Tab bar */}
-      <div className="sticky top-14 sm:top-16 z-10 glass border-b border-white/5">
+      <div className="sticky top-14 sm:top-16 z-10 glass !rounded-none border-b border-white/5">
         <div className="max-w-2xl mx-auto px-4 sm:px-5 flex">
           {([
             { id: "trade" as Tab, label: "Trade" },
