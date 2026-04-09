@@ -1,238 +1,307 @@
-# Skye Ladder — Solana Token-2022 Transfer Hook
+# Skye Ladder
 
-## What This Is
+A Solana memecoin launchpad with a structured sell-restriction transfer hook,
+a custom bonding curve, a custom AMM, and a fully automated graduation
+pipeline. Functionally a pump.fun clone with one extra constraint: every
+launched token enforces per-position sell limits that scale with price
+appreciation, on-chain, via a Token-2022 transfer hook. Buys are unrestricted.
+Only sells are gated.
 
-A structured sell-restriction token on Solana. The transfer hook enforces per-wallet, rule-based sell limits that scale with price appreciation. Buys are always unrestricted. Only sells are gated.
+The goal: break the volume-churn cycle where flippers accumulate supply at
+low MC and sell into buy volume at 2-4x, creating an artificial ceiling that
+kills most tokens below $300K MC.
 
-The goal: break the volume-churn cycle where flippers accumulate supply at low MC and sell into buy volume at 2-4x, creating an artificial ceiling that kills most tokens below $300K MC.
+---
 
-## Token Parameters
+## Three programs, one launchpad
 
-- **Supply:** 1,000,000,000 tokens (fixed, no mint)
-- **Launch MC:** ~$3,000
-- **Launch platform:** Meteora DLMM (requires Token-2022)
-- **Program:** Solana Token-2022 with Transfer Hook extension
-- **Framework:** Anchor 0.31+
-- **Price feed:** Spot price from AMM pool (NO oracle, NO TWAP)
+| Program | Crate | Purpose | Mainnet ID |
+|---|---|---|---|
+| **Skye Ladder** | `programs/skye-ladder` | Token-2022 transfer hook that enforces per-position sell restrictions | `4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz` |
+| **Skye Curve** | `programs/skye-curve` | Bonding curve launchpad. Mints supply, accumulates buys, fires `graduate` at 85 SOL | `5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf` |
+| **Skye AMM** | `programs/skye-amm` | Constant-product AMM that tokens trade on after graduation | `GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX` |
 
-## The Sell Rules (Skye Ladder)
+The user-facing token is **SKYE** (`5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF`),
+which is the first token launched through the launchpad. SKYE is the launchpad
+operator's own coin and earns the team treasury fees from every other launch.
 
-Milestone-based unlocking with **compressed growth (-50%) between milestones**. At each milestone, sellable % jumps. Between milestones, it grows at half rate.
+Treasury wallet: `5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs`
+Treasury WSOL ATA (where curve fees + AMM team fees land): `9XxMHTDuE58ESijXdbxRcNwawnyuw9fv8FAj7bV4sdtd`
+
+---
+
+## End-to-end token lifecycle
+
+```
+1. User clicks "Launch" in LaunchTab.tsx
+   ↓
+2. TX 1: Skye Curve launches the token
+        - Creates Token-2022 mint with TransferHook extension
+        - Initializes Skye Ladder hook config + extra-account-metas PDA
+        - Creates curve PDA
+        - Mints full 1B supply directly into the curve's token reserve
+        - Creates the curve's wallet record
+   ↓
+3. TX 2: Skye AMM auto-prestages the canonical pool for THIS mint
+        - Creates fresh LP mint (lp_authority PDA = mint authority)
+        - Creates SKYE & WSOL reserve ATAs owned by Pool PDA
+        - Calls AMM initialize_pool(fee_bps=100)
+        - Calls AMM set_fee_config(team_wallet=treasury_wsol_ata)
+        - Creates incinerator's LP token ATA (rugproof burn destination)
+   ↓
+4. TX 3: Metaplex metadata upload to Arweave (image + JSON)
+   ↓
+5. TX 4 (optional): Initial buy if the launcher specified one
+   ↓
+6. Token trades on the bonding curve. Each trade triggers the transfer hook,
+   which enforces sell restrictions per the Skye Ladder rules below.
+   ↓
+7. Curve.real_sol_reserve eventually crosses 85 SOL.
+   ↓
+8. The graduation watcher (running 24/7 on Railway) detects the threshold
+   and fires curve `graduate` within ~10 seconds.
+   ↓
+9. graduate atomically:
+        - Transfers all remaining tokens curve → AMM pool reserve
+        - Transfers all real SOL curve → AMM pool reserve
+        - CPIs into AMM seed_pool_from_curve which:
+            * Updates pool.skye_amount and pool.wsol_amount
+            * Computes initial_lp = sqrt(skye * wsol)
+            * Mints all LP tokens to the Solana incinerator
+              (1nc1nerator11111111111111111111111111111111)
+              → liquidity is permanently locked, rugproof
+        - Marks curve.graduated = true
+   ↓
+10. Token now trades on the AMM. Treasury earns 50% of every swap fee
+    forever; the other 50% stays in the pool LP (which is locked).
+```
+
+This entire flow is **permissionless and zero-ops**: anyone can launch a
+token, and any user (or the relayer) can fire `graduate` once threshold
+is crossed. No human in the loop after the launch transaction lands.
+
+---
+
+## Skye Ladder transfer hook — sell restriction rules
+
+The hook enforces a milestone-based unlock schedule with **compressed growth
+between milestones**. Each buy creates an independent position with its own
+entry price and unlock progress.
 
 ### Phase 1: 1x → 2x (Get Your Money Back)
-- Sell back initial investment in USD value at any time
-- Formula: `sellable = initial_usd / (token_balance × current_price)`
-- Natural taper from ~100% near entry to exactly 50% at 2x
-- **Anyone at or below entry price can ALWAYS sell 100%**
+- Sell back the position's initial SOL value at any time
+- Live formula: `sellable = initial_sol / (token_balance × current_price)`
+- Anyone at or below entry price can ALWAYS sell 100%
+- **CRITICAL — `b4c761d` Phase 1 high-water exception**: in Phase 1 the
+  formula is `1/mult` which DECREASES as price rises. Writing this to the
+  high-water mark would let users sell cheap during Phase 1 and then
+  extract more SOL than their initial when price recovers. **Phase 1
+  returns the live value but does NOT mutate `unlocked_bps`.**
+  Phase 2+ formulas are monotonically increasing in mult, so the
+  high-water mark resumes its normal job there.
 
 ### Phase 2: 2x → 5x (Compressed Growth)
-- Compressed range: 50% at 2x → ~56.25% at 4.99x
-- Between: `sellable = 0.50 + ((mult - 2) / 3 × 0.125 × 0.5)`
-- Growth is HALVED between milestones
-- At 3.5x: ~53.1% (not 56.25% like full linear)
-- **Cliff jump to 62.5% when 5x is reached**
+- 50% at 2x → ~56.25% at 4.99x
+- Compressed: `sellable = 0.50 + ((mult - 2) / 3 × 0.125 × 0.5)`
+- Cliff jump to 62.5% at exactly 5x
 
-### Phase 3: 5x → 10x (Compressed Growth)
-- Compressed range: 62.5% at 5x → ~68.75% at 9.99x
-- Between: `sellable = 0.625 + ((mult - 5) / 5 × 0.125 × 0.5)`
-- **Cliff jump to 75% when 10x is reached**
+### Phase 3: 5x → 10x
+- 62.5% → ~68.75%
+- `sellable = 0.625 + ((mult - 5) / 5 × 0.125 × 0.5)`
+- Cliff jump to 75% at exactly 10x
 
-### Phase 4: 10x → 15x (Compressed Growth)
-- Compressed range: 75% at 10x → ~87.5% at 14.99x
-- Between: `sellable = 0.75 + ((mult - 10) / 5 × 0.25 × 0.5)`
-- **Cliff jump to 100% when 15x is reached**
+### Phase 4: 10x → 15x
+- 75% → ~87.5%
+- `sellable = 0.75 + ((mult - 10) / 5 × 0.25 × 0.5)`
+- Cliff jump to 100% at exactly 15x
 
 ### Phase 5: 15x+
-- 100% unlocked. No restrictions.
+- 100% unlocked, no restrictions
 
-## Critical Rules
+### Critical invariants
 
-### 1. Each buy is an INDEPENDENT position
-Every buy creates a separate position with its own entry_price, initial_usd, token_balance, and unlock level. Later buys CANNOT unlock earlier positions.
+1. **Each buy is an independent position.** Later buys cannot unlock earlier positions.
+2. **All % calculations use current `token_balance`**, not original buy amount.
+3. **High-water mark never DECREASES** (the stored `unlocked_bps` value), but Phase 1 doesn't WRITE it.
+4. **Sells deduct from highest multiplier first** — sort positions by mult descending, then iterate.
+5. **Underwater = 100% sellable.** No one is ever trapped.
+6. **Wallet → Wallet transfers = sell + new position.** Sender enforces unlock; receiver gets a new position at current spot price.
+7. **Price is SPOT, not TWAP.** Read directly from the curve PDA (or AMM pool, post-graduation). No oracle.
+8. **Pool address is whitelisted.** Source = `config.pool` is treated as a buy; destination = `config.pool` is treated as a sell.
 
-### 2. Remaining balance is always the base
-All % calculations use current token_balance of each position, not original buy amount. If you sell 80% of a position, the remaining 20% is the new base.
+---
 
-### 3. High-water mark never decreases
-Each position's unlocked_bps is a high-water mark. If you earned 60% unlock and price dips, you keep 60%.
+## State layouts
 
-### 4. Sells deduct from highest multiplier first
-When selling, iterate positions from highest mult to lowest. Sell the most-unlocked tokens first.
+### `Position` (per-buy record inside a `WalletRecord`)
+```rust
+pub struct Position {
+    pub entry_price:    u64,   // price × 10^18, fixed-point
+    pub initial_sol:    u64,   // SOL value at buy time, lamports
+    pub token_balance:  u64,   // current raw token amount in this position
+    pub unlocked_bps:   u32,   // high-water mark of unlocked %, 0-10000 bps
+    pub original_balance: u64, // token amount at buy time, never decremented
+    pub sold_before_5x: bool,  // DEAD STATE — claim_rewards was scrapped
+    pub claimed:        bool,  // DEAD STATE — claim_rewards was scrapped
+}
+```
 
-### 5. Underwater = 100% sellable
-If current_price <= entry_price for a position, that position is fully sellable. No one is EVER trapped.
+The `sold_before_5x` and `claimed` fields are **kept on disk for layout
+compatibility** with live mainnet WalletRecords (41+ of them at time of
+writing). Removing them would shift bytes on every existing record and
+break deserialization. They're harmless dead bytes; `positions::on_sell`
+still writes `sold_before_5x` so the layout stays consistent across
+upgrades.
 
-### 6. Transfers = sell + new position
-Wallet-to-wallet transfers: sender must pass unlock check (treated as sell). Receiver gets a new position at current spot price.
-
-### 7. Price is SPOT, not TWAP
-Read spot price directly from the AMM pool at time of sell. No oracle needed. Flash loan manipulation is a non-issue because every wallet's milestones are at different absolute prices.
-
-### 8. Pool address is whitelisted
-AMM pool address bypasses the hook entirely (for LP add/remove).
-
-## Position Management
-
-### Per-Wallet PDA Schema (Fixed-Point Math)
+### `WalletRecord`
 ```rust
 pub struct WalletRecord {
-    pub positions: Vec<Position>, // max 10
+    pub owner:          Pubkey,
+    pub mint:           Pubkey,
+    pub position_count: u8,
+    pub positions:      Vec<Position>, // max 10
+    pub last_buy_slot:  u64,           // legacy, unused
+    pub slot_buy_usd:   u64,           // legacy, unused
+    pub bump:           u8,
 }
-
-pub struct Position {
-    pub entry_price: u64,     // price × 10^18
-    pub initial_usd: u64,     // USD × 10^6
-    pub token_balance: u64,   // raw token amount
-    pub unlocked_bps: u32,    // basis points 0-10000, high-water mark
-}
 ```
 
-### Position Merging Rules
-- **Proximity merge:** New buy within 10% of existing position's entry_price → merge (weighted avg entry, sum initial_usd, keep higher unlocked_bps)
-- **Phase 5 merge:** All positions at 15x+ are consolidated (fully unlocked, no need to track separately)
-- **Hard cap:** Max 10 positions per wallet. If exceeded, merge the two closest positions.
+PDA seeds: `[b"wallet", owner_pubkey, mint_pubkey]`
 
-## Core Pseudocode
+The `last_buy_slot` and `slot_buy_usd` fields are leftovers from a removed
+per-block bundle protection feature. Same layout-compat reason as above —
+left in place but not read.
 
-### calculate_unlocked(current_price, position) → bps
-```
-mult = current_price / position.entry_price
+### Position merging
+- **Proximity merge:** new buy within 10% of an existing position's `entry_price` → merge (weighted average entry, sum cost, keep higher unlocked_bps).
+- **Hard cap:** max 10 positions per wallet. If exceeded, `merge_closest_pair` combines the two with the closest entry prices.
+- **Phase 5 consolidate:** at sell time, all positions at 15x+ get combined into one (they're all 100% unlocked anyway).
+- **`merge_closest_pair` bug fixed in this codebase:** the previous version summed two stale `original_balance` values, which produced merged records that could trip the (now-removed) corruption sanitizer. Now uses `merged_token_count` directly and scales `initial_sol` proportionally to un-sold fractions via the `scaled_initial_sol` helper.
 
-if mult <= 1.0:
-    // Underwater: 100% sellable
-    return 10000
+---
 
-if mult < 2.0:
-    // Phase 1: sell initial USD back
-    return min(position.initial_usd / (position.token_balance * current_price) * 10000, 10000)
+## Fee model
 
-if mult >= 5.0 - epsilon and mult < 5.0 + epsilon:
-    return 6250  // 5x milestone snap
+### Curve (every trade pre-graduation)
+- **1.000%** total fee
+- 50% → treasury WSOL ATA
+- 50% → stays inside curve reserves (compounds, becomes part of the migration liquidity at graduation)
 
-if mult < 5.0:
-    // Phase 2: compressed
-    t = (mult - 2.0) / 3.0
-    return 5000 + (t * 1250 * 0.5)  // half growth rate
+### AMM (every trade post-graduation)
+- **1.000%** total fee
+- 50% → `team_wallet` (= treasury WSOL ATA, configured during prestage)
+- 50% → stays inside the pool reserves (deepens locked LP over time)
 
-if mult >= 10.0 - epsilon and mult < 10.0 + epsilon:
-    return 7500  // 10x milestone snap
+### Comparison to pump.fun
 
-if mult < 10.0:
-    // Phase 3: compressed
-    t = (mult - 5.0) / 5.0
-    return 6250 + (t * 1250 * 0.5)
-
-if mult >= 15.0:
-    return 10000  // Phase 5: fully unlocked
-
-// Phase 4: compressed
-t = (mult - 10.0) / 5.0
-return 7500 + (t * 2500 * 0.5)
-```
-
-### on_buy(wallet, tokens_bought, current_price)
-```
-new_position = Position {
-    entry_price: current_price,
-    initial_usd: tokens_bought * current_price,
-    token_balance: tokens_bought,
-    unlocked_bps: 0,
-}
-
-// Try merge with nearby position (within 10%)
-for pos in wallet.positions:
-    if abs(pos.entry_price - current_price) / pos.entry_price < 0.10:
-        total_cost = pos.initial_usd + new_position.initial_usd
-        total_tokens = pos.token_balance + tokens_bought
-        pos.entry_price = total_cost / total_tokens
-        pos.initial_usd = total_cost
-        pos.token_balance = total_tokens
-        return
-
-// Check cap
-if len(wallet.positions) >= 10:
-    merge_closest_pair(wallet.positions)
-
-wallet.positions.push(new_position)
-```
-
-### on_sell(wallet, tokens_to_sell, current_price) — Transfer Hook
-```
-// Sort positions by multiplier descending (sell most-unlocked first)
-sorted = sort_by_mult_desc(wallet.positions, current_price)
-
-remaining = tokens_to_sell
-for pos in sorted:
-    if remaining <= 0: break
-
-    raw_unlock = calculate_unlocked(current_price, pos)
-    effective = max(raw_unlock, pos.unlocked_bps)
-    pos.unlocked_bps = effective
-
-    sellable = pos.token_balance * effective / 10000
-    take = min(sellable, remaining)
-    pos.token_balance -= take
-    remaining -= take
-
-if remaining > 0:
-    REVERT  // trying to sell more than allowed
-
-// Clean up empty positions
-wallet.positions.retain(|p| p.token_balance > 0)
-```
-
-## Anti-Bundle Protection (Light)
-
-Per-block buy limits at low MC:
-
-| MC Range | Max buy per wallet per block |
-|---|---|
-| Under $5K | $100 |
-| $5K-$10K | $250 |
-| $10K-$25K | $500 |
-| $25K-$50K | $1,000 |
-| Above $50K | No limit |
-
-## Transfer Classification
-
-| Transfer Type | Sender Rule | Receiver Rule |
+| | pump.fun (curve) | Skye (curve) |
 |---|---|---|
-| Buy (Pool → Wallet) | Whitelisted, skip | Create new position at spot price |
-| Sell (Wallet → Pool) | Enforce unlock per position | Whitelisted, skip |
-| Wallet → Wallet | Enforce as sell (must pass unlock) | Create new position at spot price |
-| LP operations | Whitelisted both sides, skip | Skip |
+| Total | 1.250% | 1.000% |
+| Creator royalty | 0.300% | **0%** (Skye doesn't pay launchers) |
+| Protocol/Treasury | 0.950% | 0.500% |
+| LP / reserves | 0% | 0.500% |
 
-## Security Considerations
+| | pump.fun PumpSwap (low MC) | Skye AMM |
+|---|---|---|
+| Total | 1.250% (drops to 0.375% at 88K SOL MC) | 1.000% flat |
+| Creator | 0.300% (drops with MC) | **0%** |
+| Protocol | 0.930% (drops to 0.05%) | 0.500% |
+| LP | 0.020% (rises to 0.20%) | 0.500% |
 
-- **Multi-wallet splitting:** Transfer = sell (must pass unlock) + new position for receiver
-- **Position dilution:** Each buy is independent, cannot unlock earlier positions
-- **Flash loan manipulation:** Every wallet's milestones at different prices, targeting one is pointless
-- **Bundling:** Per-block limits + compressed unlock between milestones
-- **Reentrancy:** Follow checks-effects-interactions pattern
-- **Math:** All fixed-point u64/u32, checked arithmetic, round DOWN for unlocks (conservative)
-- **Compute budget:** Max 10 positions × simple arithmetic per sell, fits within Solana limits
+**Key differences:** pump pays a creator royalty, Skye doesn't. Pump's
+total fee drops as MC grows, Skye's stays flat. Skye's locked LP grows
+faster because of the higher pool retention rate. Skye's treasury earns
+roughly half what pump's would on early-stage tokens.
 
-## Build Sequence
+---
 
-1. Scaffold Anchor project with Token-2022 Transfer Hook
-2. Implement core unlock calculation with compressed milestones
-3. Add single-position sell restriction (MVP)
-4. Add multi-position tracking with merging
-5. Add sell-order priority (highest mult first)
-6. Add transfer classification (buy/sell/wallet-to-wallet)
-7. Add per-block buy limits
-8. Add pool address whitelist
-9. Deploy to devnet, create test Meteora pool
-10. Write comprehensive tests (50+ cases)
-11. Fuzz testing (10,000+ random scenarios)
-12. Bug bounty / security review
-13. Mainnet deploy
+## Currently live on mainnet
 
-## Important Notes
+| Component | Slot | Notes |
+|---|---|---|
+| Skye Ladder program | `411800947` | Includes seed validation, sanitizer fix, merge fix, claim_rewards stub, b4c761d Phase 1 fix, set_test_price gated out |
+| Skye Curve program | `411878323` | Auto-flip lockout fixed, atomic graduate via AMM CPI |
+| Skye AMM program | `411878108` | `seed_pool_from_curve` instruction live, 50/50 fee split |
+| SKYE Pool PDA | `Fp4spHfUgR7RUDhbhdVG8fta2DhURxDyUJoSd2Y2PFcY` | Pre-staged via `scripts/prestage-skye-pool.ts` |
+| SKYE LP mint | `7xC9WcW6HAbr8dmSxXHmh5tMLhmrD5gACzHL1QbUKdox` | Supply currently 0; bonded supply gets minted to incinerator |
+| Incinerator LP ATA | `ELESgf9X5wnuiejUvZ6MaGworLCapfdqtzQMnQGrQ6HY` | Where the locked LP lands at graduation |
+| Helius RPC | Developer tier | Locked to `skyefall.gg` + `www.skyefall.gg` referrers; key rotated to `8ed7e5b2-...` |
+| Frontend | https://www.skyefall.gg | Vercel auto-deploys on `main` push; project ID `prj_BsfjlhexfjcoC4A6jWqcwBhCVPo2` |
+| Graduation relayer | Railway, $5/mo | Polls every 10s, fires `graduate` on any curve at threshold |
+| Relayer hot wallet | `7aCb7JDkS5pcbDicnF1PwqBaACi93zHzg8UE6iM39k4M` | Funded with 0.05 SOL, only pays tx fees |
 
-- ALL math is fixed-point. No f64 on-chain.
-- Use u64 scaled by 10^18 for prices, 10^6 for USD amounts, raw for token amounts
-- unlocked_bps is u32 in basis points (0-10000)
+---
+
+## Repo layout
+
+```
+/programs
+  /skye-ladder       # transfer hook program
+  /skye-curve        # bonding curve program
+  /skye-amm          # AMM program
+/scripts
+  graduate-watcher.ts        # Universal relayer (Railway target)
+  prestage-skye-pool.ts      # One-time pool bootstrap (was used for SKYE)
+  scan-wallet-records.ts     # Read-only WalletRecord scanner
+  _check-fees.ts             # Fee destination audit
+  _get-price.ts              # Spot price reader
+  test-*.ts                  # Various end-to-end test scripts
+  ... etc.
+/frontend                    # Vite + React app, deployed to Vercel
+  /src/components            # All tabs (Discover, World, Launch, Trade, etc.)
+  /src/lib                   # Helpers (metadata, format, unlock, launchStore, etc.)
+  SECURITY-NOTES.md          # npm audit accepted-risk documentation
+Dockerfile                   # Railway target for the relayer
+.dockerignore                # Excludes everything except watcher + deps
+.vercelignore                # Excludes test-ledger / Rust stuff from Vercel
+```
+
+---
+
+## Operational notes
+
+- **Upgrade authority is permanent.** Per project policy, the program upgrade authority will NOT be frozen. It's treated as a permanent trust assumption — fixes can ship post-launch. Defense is via tight admin gating on instructions, the `set_test_price` feature gate, the `claim_rewards` permanent disable stub, etc.
+- **The graduation relayer is permissionless and runs 24/7.** Any bot, any user, or the website itself can fire `graduate`. The Railway watcher just races to be first.
+- **Local dev uses public RPC, not Helius**, because the locked-down Helius key rejects requests from `localhost` referrers. `frontend/.env.local` is set to `https://solana-rpc.publicnode.com`. Vercel production has its own `VITE_RPC_URL` env var with the locked Helius key.
+- **The 5 corrupt wallet records.** A scan in `scans/scan-2026-04-07-with-price.json` identified 5 live SKYE WalletRecords with garbled state from layout migration. They're handled safely by the impossible-balance filter in `transfer_hook::load_wallet_record_mut`. A targeted `reset_wallet_record` admin instruction is on the backlog but not yet built.
+- **Pre-existing test failures.** `cargo test -p skye-ladder --lib` shows 7 failing tests in `tests::comprehensive::test_5*` (the `pool_price` tests). These are stale test fixtures, not real bugs; the `pool_price.rs` reader requires non-empty pool data and the tests pass empty data. Cosmetic, on the backlog.
+
+---
+
+## Build & deploy
+
+```bash
+# Build all programs (BPF target — needs Solana toolchain on PATH)
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+anchor build --no-idl
+# IDL build is broken on Anchor 0.30.1 + recent proc-macro2 versions
+# (anchor-syn calls Span::source_file which was removed). --no-idl
+# avoids this.
+
+# Test individual programs
+cargo test -p skye-ladder --lib
+cargo test -p skye-curve  --lib
+cargo test -p skye-amm    --lib
+
+# Upgrade a program on mainnet (only the upgrade authority can sign this)
+anchor upgrade target/deploy/skye_ladder.so \
+  --program-id 4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz \
+  --provider.cluster mainnet
+
+# Run the relayer locally (for testing — production runs on Railway)
+npx ts-node scripts/graduate-watcher.ts --once
+npx ts-node scripts/graduate-watcher.ts --interval 10
+```
+
+---
+
+## Math conventions
+
+- All on-chain math is fixed-point. **No `f64` ever.**
+- Prices: `u64` scaled by `10^18` (`PRICE_SCALE`)
+- SOL amounts: lamports (raw `u64`)
+- Token amounts: raw `u64` (no decimal scaling beyond the mint's own decimals)
+- Unlock %: `u32` in basis points, 0–10000 (`BPS_DENOMINATOR`)
+- Multiplier comparisons: scaled by 10000 to match BPS (`MULT_5X = 50000`)
 - Division always rounds DOWN (conservative — never accidentally unlock more)
-- The spot price comes from reading the pool's token ratio, not an oracle
-- The program should be upgradeable initially, with authority freeze after confidence
+- Use `checked_*` arithmetic everywhere; saturating only where overflow is functionally meaningless
