@@ -1,10 +1,15 @@
 /**
- * graduate-watcher.ts — Automatic graduation relayer for SKYE.
+ * graduate-watcher.ts — Universal graduation relayer for the Skye launchpad.
  *
- * Polls the SKYE bonding curve and fires the curve's `graduate` instruction
- * the moment `real_sol_reserve >= graduation_sol`. Matches pump.fun's
- * relayer model: zero manual ops at the moment of bonding, atomic migration
- * into the AMM, LP burned to incinerator.
+ * Enumerates EVERY curve account owned by the Skye Curve program, polls
+ * each one's `real_sol_reserve`, and fires the curve's `graduate`
+ * instruction the moment ANY of them crosses `graduation_sol`. Matches
+ * pump.fun's relayer model: zero manual ops at the moment of bonding,
+ * atomic migration into the AMM, LP burned to incinerator.
+ *
+ * Works for SKYE and every future token launched through the launchpad —
+ * NO hardcoded mint. Each token's PDAs are derived from its own mint
+ * pubkey, read directly from the curve account data.
  *
  * USAGE:
  *
@@ -61,17 +66,21 @@ import * as fs from "fs";
 import * as path from "path";
 
 // ── Constants (mainnet) ──────────────────────────────────────────────────────
-const SKYE_MINT          = new PublicKey("5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF");
 const SKYE_CURVE_ID      = new PublicKey("5bxtpbYgiMQMJcB1c2cWXGErsiRmAZeyRqRKCXoeZRXf");
 const SKYE_AMM_ID        = new PublicKey("GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX");
 const SKYE_LADDER_ID     = new PublicKey("4THAwb6WSpDyyqMHnJL2VBjU7TCLfLLGC5jtuCiyX5Rz");
 const INCINERATOR        = new PublicKey("1nc1nerator11111111111111111111111111111111");
 
 // Curve account field offsets (matches Curve struct in skye-curve/src/state.rs)
+//   8 disc + 32 creator + 32 mint + 32 wsol_mint + 32 token_reserve + 32 sol_reserve
+//   + 8 vToken + 8 vSol + 8 realSol + 8 realToken + 8 supply + 2 fee + 1 grad + 8 gradSol
+//   + 1 bump + 32 hook + 32 creator_fee_wallet
+const CURVE_MINT_OFFSET       = 8 + 32;       // 40
 const CURVE_REAL_SOL_OFFSET   = 184;
 const CURVE_REAL_TOKEN_OFFSET = 192;
 const CURVE_GRADUATED_OFFSET  = 210;
 const CURVE_GRADUATION_OFFSET = 211;
+const CURVE_ACCOUNT_SIZE      = 284;          // total bytes — used as a getProgramAccounts filter
 
 // Hook Config field offsets (matches Config struct in skye-ladder/src/state.rs)
 const CONFIG_LB_PAIR_OFFSET = 8 + 32 + 32 + 32; // 104
@@ -119,16 +128,16 @@ function ts(): string {
   return new Date().toISOString().slice(11, 19);
 }
 
-// ── PDA derivations ──────────────────────────────────────────────────────────
-function curvePda(): [PublicKey, number] {
+// ── PDA derivations (all per-mint) ───────────────────────────────────────────
+function curvePda(mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("curve"), SKYE_MINT.toBuffer()],
+    [Buffer.from("curve"), mint.toBuffer()],
     SKYE_CURVE_ID,
   );
 }
-function poolPda(): [PublicKey, number] {
+function poolPda(mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("pool"), SKYE_MINT.toBuffer(), NATIVE_MINT.toBuffer()],
+    [Buffer.from("pool"), mint.toBuffer(), NATIVE_MINT.toBuffer()],
     SKYE_AMM_ID,
   );
 }
@@ -138,43 +147,69 @@ function lpAuthorityPda(pool: PublicKey): [PublicKey, number] {
     SKYE_AMM_ID,
   );
 }
-function hookConfigPda(): [PublicKey, number] {
+function hookConfigPda(mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("config"), SKYE_MINT.toBuffer()],
+    [Buffer.from("config"), mint.toBuffer()],
     SKYE_LADDER_ID,
   );
 }
-function hookExtraMetasPda(): [PublicKey, number] {
+function hookExtraMetasPda(mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("extra-account-metas"), SKYE_MINT.toBuffer()],
+    [Buffer.from("extra-account-metas"), mint.toBuffer()],
     SKYE_LADDER_ID,
   );
 }
-function walletRecordPda(owner: PublicKey): [PublicKey, number] {
+function walletRecordPda(owner: PublicKey, mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("wallet"), owner.toBuffer(), SKYE_MINT.toBuffer()],
+    [Buffer.from("wallet"), owner.toBuffer(), mint.toBuffer()],
     SKYE_LADDER_ID,
   );
 }
 
 // ── Curve state ──────────────────────────────────────────────────────────────
 interface CurveState {
+  curve: PublicKey;
+  mint: PublicKey;
   realSol: bigint;
   realTokens: bigint;
   graduated: boolean;
   graduationSol: bigint;
 }
 
-async function fetchCurveState(conn: Connection, curve: PublicKey): Promise<CurveState | null> {
-  const acct = await conn.getAccountInfo(curve, "confirmed");
-  if (!acct || acct.data.length < 220) return null;
-  const data = acct.data;
+function parseCurveAccount(curveAddress: PublicKey, data: Buffer): CurveState | null {
+  if (data.length < CURVE_ACCOUNT_SIZE) return null;
   return {
+    curve:         curveAddress,
+    mint:          new PublicKey(data.subarray(CURVE_MINT_OFFSET, CURVE_MINT_OFFSET + 32)),
     realSol:       data.readBigUInt64LE(CURVE_REAL_SOL_OFFSET),
     realTokens:    data.readBigUInt64LE(CURVE_REAL_TOKEN_OFFSET),
     graduated:     data[CURVE_GRADUATED_OFFSET] === 1,
     graduationSol: data.readBigUInt64LE(CURVE_GRADUATION_OFFSET),
   };
+}
+
+async function fetchCurveState(conn: Connection, curve: PublicKey): Promise<CurveState | null> {
+  const acct = await conn.getAccountInfo(curve, "confirmed");
+  if (!acct) return null;
+  return parseCurveAccount(curve, acct.data);
+}
+
+/**
+ * Enumerate every active curve owned by the Skye Curve program. Filters by
+ * exact account size to skip the LaunchpadConfig and any other non-Curve
+ * accounts the program might own.
+ */
+async function fetchAllCurves(conn: Connection): Promise<CurveState[]> {
+  const accounts = await conn.getProgramAccounts(SKYE_CURVE_ID, {
+    commitment: "confirmed",
+    filters: [{ dataSize: CURVE_ACCOUNT_SIZE }],
+  });
+  const curves: CurveState[] = [];
+  for (const { pubkey, account } of accounts) {
+    const state = parseCurveAccount(pubkey, account.data);
+    if (state) curves.push(state);
+  }
+  return curves;
 }
 
 async function fetchHookLbPair(conn: Connection, config: PublicKey): Promise<PublicKey> {
@@ -188,6 +223,7 @@ async function fetchHookLbPair(conn: Connection, config: PublicKey): Promise<Pub
 // ── Build the graduate instruction ───────────────────────────────────────────
 function buildGraduateIx(opts: {
   payer: PublicKey;
+  mint: PublicKey;
   curve: PublicKey;
   curveTokenReserve: PublicKey;
   curveSolReserve: PublicKey;
@@ -210,7 +246,7 @@ function buildGraduateIx(opts: {
     // Standard graduate accounts (must match the order in graduate.rs Accounts struct)
     { pubkey: opts.payer,                isSigner: true,  isWritable: true  },
     { pubkey: opts.curve,                isSigner: false, isWritable: true  },
-    { pubkey: SKYE_MINT,                 isSigner: false, isWritable: false },
+    { pubkey: opts.mint,                 isSigner: false, isWritable: false },
     { pubkey: NATIVE_MINT,               isSigner: false, isWritable: false },
     { pubkey: opts.curveTokenReserve,    isSigner: false, isWritable: true  },
     { pubkey: opts.curveSolReserve,      isSigner: false, isWritable: true  },
@@ -244,41 +280,44 @@ function buildGraduateIx(opts: {
   });
 }
 
-// ── Try to fire graduate ─────────────────────────────────────────────────────
+// ── Try to fire graduate for ONE specific token ──────────────────────────────
 async function tryGraduate(
   conn: Connection,
   payer: Keypair,
   state: CurveState,
-): Promise<"graduated" | "skipped" | "error"> {
-  const [curve]      = curvePda();
-  const [pool]       = poolPda();
+): Promise<"graduated" | "skipped" | "error" | "no-pool"> {
+  const mint         = state.mint;
+  const [curve]      = curvePda(mint);
+  const [pool]       = poolPda(mint);
   const [lpAuth]     = lpAuthorityPda(pool);
-  const [hookCfg]    = hookConfigPda();
-  const [extraMetas] = hookExtraMetasPda();
-  const [senderWR]   = walletRecordPda(curve);
-  const [receiverWR] = walletRecordPda(pool);
+  const [hookCfg]    = hookConfigPda(mint);
+  const [extraMetas] = hookExtraMetasPda(mint);
+  const [senderWR]   = walletRecordPda(curve, mint);
+  const [receiverWR] = walletRecordPda(pool, mint);
 
   const curveTokenReserve = getAssociatedTokenAddressSync(
-    SKYE_MINT, curve, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+    mint, curve, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
   );
   const curveSolReserve = getAssociatedTokenAddressSync(
     NATIVE_MINT, curve, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
   );
   const ammTokenReserve = getAssociatedTokenAddressSync(
-    SKYE_MINT, pool, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+    mint, pool, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
   );
   const ammSolReserve = getAssociatedTokenAddressSync(
     NATIVE_MINT, pool, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
   );
 
-  // Read pool to get the lp_mint address (set during pre-stage)
+  // Read pool to get the lp_mint address (set during pre-stage). If the pool
+  // doesn't exist, this token was launched without auto-prestage and the
+  // relayer cannot graduate it — log and skip rather than crash.
   const poolAcct = await conn.getAccountInfo(pool, "confirmed");
   if (!poolAcct) {
-    console.error(`[${ts()}] ✗ AMM Pool PDA not found — has the pre-stage script been run?`);
-    return "error";
+    console.error(`[${ts()}] ✗ ${mint.toBase58().slice(0,8)}…  pool not pre-staged — skipping. (Token launched before auto-prestage shipped, or prestage failed.)`);
+    return "no-pool";
   }
   // Pool layout: 8 disc + 32 auth + 32 skye + 32 wsol + 32 skye_res + 32 wsol_res + 32 lp_mint
-  // lp_mint is at offset 8 + 4*32 = 136
+  // lp_mint at offset 8 + 5*32 = 168
   const lpMint = new PublicKey(poolAcct.data.subarray(8 + 32 * 5, 8 + 32 * 6));
 
   const incineratorLpAccount = getAssociatedTokenAddressSync(
@@ -288,10 +327,10 @@ async function tryGraduate(
   // Read hook config for lb_pair (the price source the hook validates)
   const lbPair = await fetchHookLbPair(conn, hookCfg);
 
-  console.log(`[${ts()}] → Building graduate transaction...`);
+  console.log(`[${ts()}] → Building graduate tx for ${mint.toBase58()}`);
   console.log(`         payer:        ${payer.publicKey.toBase58()}`);
   console.log(`         realSol:      ${fmtSol(state.realSol)} / ${fmtSol(state.graduationSol)} SOL`);
-  console.log(`         realTokens:   ${(Number(state.realTokens) / 1e9).toFixed(2)} SKYE`);
+  console.log(`         realTokens:   ${(Number(state.realTokens) / 1e9).toFixed(2)} tokens`);
   console.log(`         pool:         ${pool.toBase58()}`);
   console.log(`         lp_mint:      ${lpMint.toBase58()}`);
   console.log(`         incinerator:  ${incineratorLpAccount.toBase58()}`);
@@ -299,6 +338,7 @@ async function tryGraduate(
 
   const ix = buildGraduateIx({
     payer: payer.publicKey,
+    mint,
     curve,
     curveTokenReserve,
     curveSolReserve,
@@ -325,25 +365,24 @@ async function tryGraduate(
       commitment: "confirmed",
       skipPreflight: false,
     });
-    console.log(`[${ts()}] ✓ GRADUATED! tx: ${sig}`);
+    console.log(`[${ts()}] ✓ GRADUATED ${mint.toBase58().slice(0,8)}…  tx: ${sig}`);
     console.log(`         https://solscan.io/tx/${sig}`);
     return "graduated";
   } catch (e: any) {
     const msg = e.message || String(e);
     const logs: string[] = e.logs || [];
 
-    // Common "expected" failures we should treat as success
     if (logs.some(l => l.includes("AlreadyGraduated")) || msg.includes("AlreadyGraduated")) {
-      console.log(`[${ts()}] ✓ Curve already graduated (someone else fired graduate first). Done.`);
+      console.log(`[${ts()}] ✓ ${mint.toBase58().slice(0,8)}…  already graduated (someone else fired first).`);
       return "graduated";
     }
 
     if (logs.some(l => l.includes("InsufficientLiquidity"))) {
-      console.log(`[${ts()}] ⚠ Curve below threshold (race condition — realSol dropped between read and tx). Will retry.`);
+      console.log(`[${ts()}] ⚠ ${mint.toBase58().slice(0,8)}…  below threshold (race condition). Will retry.`);
       return "skipped";
     }
 
-    console.error(`[${ts()}] ✗ Graduate failed: ${msg}`);
+    console.error(`[${ts()}] ✗ Graduate failed for ${mint.toBase58().slice(0,8)}…: ${msg}`);
     if (logs.length > 0) {
       console.error("         on-chain logs:");
       logs.slice(0, 30).forEach(l => console.error(`           ${l}`));
@@ -389,39 +428,53 @@ async function main() {
     console.error(`  ✗ Relayer wallet needs at least ~0.005 SOL for tx fees. Fund it and re-run.`);
     process.exit(1);
   }
-
-  const [curve] = curvePda();
-  console.log(`  Curve:    ${curve.toBase58()}`);
   console.log();
 
-  // ── Polling loop ──
+  // ── Polling loop — enumerate every curve, fire graduate on any ready ──
+  //
+  // Unlike a per-token watcher, this runs forever even after individual tokens
+  // graduate. New tokens launched through the launchpad get picked up on the
+  // next poll automatically. The relayer only exits if the wallet runs dry
+  // or there's a fatal startup error.
   let iter = 0;
   while (true) {
     iter++;
     try {
-      const state = await fetchCurveState(conn, curve);
-      if (!state) {
-        console.error(`[${ts()}] ✗ Curve PDA not found — wrong network or wrong mint?`);
-        process.exit(1);
-      }
+      const allCurves = await fetchAllCurves(conn);
+      const active   = allCurves.filter(c => !c.graduated && c.graduationSol > 0n);
+      const ready    = active.filter(c => c.realSol >= c.graduationSol);
 
-      const ratio = (Number(state.realSol) / Number(state.graduationSol) * 100).toFixed(1);
-      const status = state.graduated ? "GRADUATED" : `${fmtSol(state.realSol)} / ${fmtSol(state.graduationSol)} SOL (${ratio}%)`;
-      console.log(`[${ts()}] poll #${iter}: ${status}`);
+      // One-line summary per poll. Per-token detail only when something
+      // interesting is happening (close to threshold or ready to fire).
+      console.log(`[${ts()}] poll #${iter}: ${allCurves.length} curves total, ${active.length} active, ${ready.length} ready to graduate`);
 
-      if (state.graduated) {
-        console.log(`[${ts()}] ✓ Curve is already graduated. Nothing to do. Exiting.`);
-        process.exit(0);
-      }
-
-      if (state.realSol >= state.graduationSol) {
-        console.log(`[${ts()}] ▲ THRESHOLD REACHED — firing graduate`);
-        const result = await tryGraduate(conn, payer, state);
-        if (result === "graduated") {
-          console.log(`[${ts()}] ✓ Done. Exiting cleanly.`);
-          process.exit(0);
+      // Show progress for the closest non-graduated curves so you can eyeball
+      // which token is closest to bonding without scrolling.
+      if (active.length > 0) {
+        const sorted = [...active].sort((a, b) => {
+          // Higher % first
+          const ra = Number(a.realSol) / Number(a.graduationSol);
+          const rb = Number(b.realSol) / Number(b.graduationSol);
+          return rb - ra;
+        });
+        const top = sorted.slice(0, 5);
+        for (const c of top) {
+          const ratio = (Number(c.realSol) / Number(c.graduationSol) * 100).toFixed(1);
+          console.log(`         ${c.mint.toBase58().slice(0, 8)}…  ${fmtSol(c.realSol)} / ${fmtSol(c.graduationSol)} SOL (${ratio}%)`);
         }
-        // result === "skipped" or "error" → fall through to retry
+        if (active.length > top.length) {
+          console.log(`         (... ${active.length - top.length} more)`);
+        }
+      }
+
+      // Fire graduate on every ready curve, sequentially. Each call is its
+      // own transaction; if one fails the others still get tried.
+      for (const c of ready) {
+        console.log(`[${ts()}] ▲ THRESHOLD REACHED for ${c.mint.toBase58()} — firing graduate`);
+        await tryGraduate(conn, payer, c);
+        // Whatever the result (graduated, skipped, error, no-pool), we
+        // continue the loop. Successful graduations get picked up on the
+        // next poll as `graduated=true` and filter out automatically.
       }
     } catch (e: any) {
       console.error(`[${ts()}] poll #${iter} error: ${e.message || e}`);

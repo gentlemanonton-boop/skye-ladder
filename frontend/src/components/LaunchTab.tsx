@@ -5,10 +5,12 @@ import {
 } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, NATIVE_MINT,
-  ExtensionType, createInitializeMintInstruction, createInitializeTransferHookInstruction,
+  ExtensionType, createInitializeMintInstruction, createInitializeMint2Instruction,
+  createInitializeTransferHookInstruction,
   createAssociatedTokenAccountInstruction, createMintToInstruction,
   createSyncNativeInstruction,
-  getMintLen, getAssociatedTokenAddressSync, ASSOCIATED_TOKEN_PROGRAM_ID,
+  getMintLen, MINT_SIZE, getMinimumBalanceForRentExemptMint,
+  getAssociatedTokenAddressSync, ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import { TransactionInstruction } from "@solana/web3.js";
@@ -22,6 +24,19 @@ const LAUNCH_DISC = new Uint8Array([10,128,86,171,3,137,161,244]);
 const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
 const LAUNCH_FEE_LAMPORTS = 0.01 * LAMPORTS_PER_SOL;
 const SWAP_DISC = new Uint8Array([248,198,158,145,225,117,135,200]);
+
+// Skye AMM constants for the auto-prestage step that runs immediately after
+// the launch tx. Every launched token gets its AMM pool created with fee
+// routing already pointed at the treasury and an incinerator LP token ATA
+// pre-created — the graduation relayer can then atomically migrate
+// liquidity into this pool the moment realSol crosses 85.
+const SKYE_AMM_ID = new PublicKey("GRBvJRRJfV3CzRLocGcr3NTptWQpu1G4nW9Jpff5TFoX");
+const INCINERATOR = new PublicKey("1nc1nerator11111111111111111111111111111111");
+const POOL_FEE_BPS = 100; // 1% — matches the curve's fee_bps for continuity
+// Anchor discriminators for the AMM instructions, computed from
+// sha256("global:<name>")[0..8]:
+const INIT_POOL_DISC      = new Uint8Array([95,180,10,172,84,174,232,40]);
+const SET_FEE_CONFIG_DISC = new Uint8Array([221,222,52,206,114,198,64,91]);
 
 export function LaunchTab() {
   const wallet = useWallet();
@@ -180,14 +195,144 @@ export function LaunchTab() {
       await connection.confirmTransaction(sig1, "confirmed");
 
       // ══════════════════════════════════════════════════
-      // TX 2: Upload image + JSON to Arweave + Metaplex createV1 (1 approval)
+      // TX 2: Auto-prestage the AMM pool (1 approval)
+      //
+      // Creates the AMM pool, lp_mint, reserve ATAs, and incinerator LP ATA
+      // for THIS token. After this lands, the graduation relayer can fire
+      // graduate atomically the moment realSol >= 85 — no per-launch manual
+      // ops, no out-of-band scripts. Mirrors scripts/prestage-skye-pool.ts
+      // but inlined here so every launch through the launchpad gets the
+      // same runway from day one.
+      //
+      // Wrapped in try/catch — a prestage failure does not abort the launch
+      // (the token still trades on the curve, just won't auto-graduate).
+      // Can be retried later via scripts/prestage-skye-pool.ts adapted to
+      // the right mint.
+      // ══════════════════════════════════════════════════
+      setStep(2);
+      try {
+        const [poolPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("pool"), mint.toBuffer(), NATIVE_MINT.toBuffer()],
+          SKYE_AMM_ID,
+        );
+        const [lpAuthority] = PublicKey.findProgramAddressSync(
+          [Buffer.from("lp-authority"), poolPda.toBuffer()],
+          SKYE_AMM_ID,
+        );
+        const lpMintKeypair = Keypair.generate();
+        const skyeReserve = getAssociatedTokenAddressSync(
+          mint, poolPda, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+        );
+        const wsolReserve = getAssociatedTokenAddressSync(
+          NATIVE_MINT, poolPda, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+        );
+        const treasuryWsolAta = getAssociatedTokenAddressSync(
+          NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+        );
+        const incineratorLpAta = getAssociatedTokenAddressSync(
+          lpMintKeypair.publicKey, INCINERATOR, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+        );
+
+        const lpMintRent = await getMinimumBalanceForRentExemptMint(connection);
+
+        // initialize_pool(fee_bps: u16) — args: 2 bytes
+        const initPoolData = Buffer.alloc(8 + 2);
+        initPoolData.set(INIT_POOL_DISC, 0);
+        initPoolData.writeUInt16LE(POOL_FEE_BPS, 8);
+
+        const initPoolIx = new TransactionInstruction({
+          programId: SKYE_AMM_ID,
+          data: initPoolData,
+          keys: [
+            { pubkey: publicKey,                   isSigner: true,  isWritable: true  },
+            { pubkey: mint,                        isSigner: false, isWritable: false },
+            { pubkey: NATIVE_MINT,                 isSigner: false, isWritable: false },
+            { pubkey: poolPda,                     isSigner: false, isWritable: true  },
+            { pubkey: skyeReserve,                 isSigner: false, isWritable: false },
+            { pubkey: wsolReserve,                 isSigner: false, isWritable: false },
+            { pubkey: lpMintKeypair.publicKey,     isSigner: false, isWritable: false },
+            { pubkey: lpAuthority,                 isSigner: false, isWritable: false },
+            { pubkey: TOKEN_2022_PROGRAM_ID,       isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID,            isSigner: false, isWritable: false },
+            { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: SystemProgram.programId,     isSigner: false, isWritable: false },
+          ],
+        });
+
+        // set_fee_config(team_wallet: Pubkey) — args: 32 bytes
+        const setFeeData = Buffer.alloc(8 + 32);
+        setFeeData.set(SET_FEE_CONFIG_DISC, 0);
+        treasuryWsolAta.toBuffer().copy(setFeeData, 8);
+
+        const setFeeIx = new TransactionInstruction({
+          programId: SKYE_AMM_ID,
+          data: setFeeData,
+          keys: [
+            { pubkey: publicKey,               isSigner: true,  isWritable: true  },
+            { pubkey: poolPda,                 isSigner: false, isWritable: true  },
+            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+          ],
+        });
+
+        const tx2 = new Transaction().add(
+          // Create the LP mint account (rent-exempt, owned by lp_authority PDA)
+          SystemProgram.createAccount({
+            fromPubkey:       publicKey,
+            newAccountPubkey: lpMintKeypair.publicKey,
+            lamports:         lpMintRent,
+            space:            MINT_SIZE,
+            programId:        TOKEN_PROGRAM_ID,
+          }),
+          createInitializeMint2Instruction(
+            lpMintKeypair.publicKey,
+            6,           // LP token decimals
+            lpAuthority, // mint authority
+            lpAuthority, // freeze authority
+            TOKEN_PROGRAM_ID,
+          ),
+          // Create the pool's SKYE reserve ATA (Token-2022)
+          createAssociatedTokenAccountInstruction(
+            publicKey, skyeReserve, poolPda, mint,
+            TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+          ),
+          // Create the pool's WSOL reserve ATA (standard Token)
+          createAssociatedTokenAccountInstruction(
+            publicKey, wsolReserve, poolPda, NATIVE_MINT,
+            TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+          ),
+          // Initialize the Pool PDA via the AMM program
+          initPoolIx,
+          // Wire fees to the treasury
+          setFeeIx,
+          // Pre-create the incinerator's LP token ATA so seed_pool_from_curve
+          // has somewhere to mint LP tokens at graduation time
+          createAssociatedTokenAccountInstruction(
+            publicKey, incineratorLpAta, INCINERATOR, lpMintKeypair.publicKey,
+            TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+          ),
+        );
+        tx2.feePayer = publicKey;
+        tx2.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+        tx2.partialSign(lpMintKeypair);
+        const sig2 = await sendTransaction(tx2, connection);
+        await connection.confirmTransaction(sig2, "confirmed");
+      } catch (prestageErr: any) {
+        console.error("Auto-prestage failed (non-fatal):", prestageErr);
+        // The token still launches successfully on the curve. Without prestage
+        // the graduation relayer will skip this token (logging "no-pool"); a
+        // human can run scripts/prestage-skye-pool.ts adapted to this mint
+        // before bonding to fix it.
+      }
+
+      // ══════════════════════════════════════════════════
+      // TX 3: Upload image + JSON to Arweave + Metaplex createV1 (1 approval)
       //
       // Wrapped in try/catch — a metadata failure does not abort an otherwise
       // successful launch. The launching user still sees the image via the
       // localStorage cache (storeToken below), and the upload can be retried
       // later via scripts/backfill-metadata.ts.
       // ══════════════════════════════════════════════════
-      setStep(2);
+      setStep(3);
       try {
         if (wallet.wallet?.adapter) {
           await uploadAndCreateMetadata({
@@ -202,10 +347,10 @@ export function LaunchTab() {
       }
 
       // ══════════════════════════════════════════════════
-      // TX 3 (OPTIONAL): Initial buy (1 approval)
+      // TX 4 (OPTIONAL): Initial buy (1 approval)
       // ══════════════════════════════════════════════════
       if (initialBuySolNum > 0) {
-        setStep(3);
+        setStep(4);
         // The launching wallet has no token ATA yet — TX 1 minted the supply
         // straight to the curve, so we create the creator's ATA fresh here.
         const creatorATA = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
@@ -280,7 +425,7 @@ export function LaunchTab() {
         launchedAt: Math.floor(Date.now() / 1000),
       });
 
-      setStep(4);
+      setStep(5);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
 
     } catch (e: any) {
@@ -290,8 +435,15 @@ export function LaunchTab() {
     }
   }
 
-  const stepLabels = ["", "Launching token...", "Uploading metadata to Arweave...", "Buying initial position...", "Done!"];
-  const isLaunching = step > 0 && step < 4;
+  const stepLabels = [
+    "",
+    "Launching token...",
+    "Pre-staging AMM pool...",
+    "Uploading metadata to Arweave...",
+    "Buying initial position...",
+    "Done!",
+  ];
+  const isLaunching = step > 0 && step < 5;
 
   return (
     <div className="space-y-6">
