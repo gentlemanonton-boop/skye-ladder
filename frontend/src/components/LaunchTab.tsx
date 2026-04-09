@@ -449,9 +449,6 @@ export function LaunchTab() {
     <div className="space-y-6">
       <div className="glass p-6 text-center space-y-3">
         <h2 className="font-pixel text-[14px] sm:text-[16px] text-skye-400 tracking-wide">LAUNCHPAD</h2>
-        <p className="text-[14px] text-ink-secondary max-w-sm mx-auto">
-          Launch a token with built-in sell restrictions. Every token gets the Skye Ladder.
-        </p>
       </div>
 
       <div className="glass p-5 sm:p-6 space-y-4">
@@ -566,7 +563,7 @@ export function LaunchTab() {
         {publicKey ? (!isLaunching ? (
           <button onClick={handleLaunch} disabled={!name || !symbol}
             className="w-full py-4 rounded-xl bg-gradient-to-r from-skye-500 to-skye-600 hover:from-skye-600 hover:to-skye-700 text-white font-semibold text-[15px] transition-all active:scale-[0.98] disabled:opacity-40 min-h-[52px]">
-            Launch {symbol || "Token"}
+            Create coin
           </button>
         ) : null) : (
           <div className="text-center text-[13px] text-ink-faint py-3">Connect wallet to launch</div>

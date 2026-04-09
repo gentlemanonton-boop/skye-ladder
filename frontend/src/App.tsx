@@ -90,7 +90,7 @@ export default function App() {
             { id: "trade" as Tab, label: "Trade" },
             { id: "chart" as Tab, label: "Chart" },
             { id: "world" as Tab, label: "World" },
-            { id: "launch" as Tab, label: "Launch" },
+            { id: "launch" as Tab, label: "Create" },
             { id: "discover" as Tab, label: "Discover" },
             { id: "about" as Tab, label: "About" },
           ]).map(({ id, label }) => (
