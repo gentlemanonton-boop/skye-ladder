@@ -6,6 +6,7 @@
     "deploy": "npx ts-node scripts/deploy.ts",
     "create-pool": "npx ts-node scripts/create-pool.ts",
     "test-hook": "npx ts-node scripts/test-hook.ts",
+    "watcher": "ts-node scripts/graduate-watcher.ts --interval 10",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },

@@ -1,0 +1,70 @@
+# Skye watcher Docker build — exclude everything that isn't needed for
+# scripts/graduate-watcher.ts. Keeps the image small and the build fast.
+
+# Solana / Anchor / Rust
+programs/
+target/
+.anchor/
+*.so
+Cargo.lock
+Cargo.toml
+Anchor.toml
+Xargo.toml
+
+# Local validator state (live sockets, snapshots, KEYPAIRS)
+test-ledger/
+
+# Frontend (deployed separately on Vercel)
+frontend/
+
+# Tests, migrations, scans
+tests/
+migrations/
+scans/
+
+# Node modules — Docker rebuilds these via npm ci
+node_modules/
+
+# Other test/utility scripts the watcher doesn't need (the watcher only
+# needs scripts/graduate-watcher.ts which the Dockerfile copies explicitly)
+scripts/_check-fees.ts
+scripts/_get-price.ts
+scripts/scan-wallet-records.ts
+scripts/prestage-skye-pool.ts
+scripts/test-*.ts
+scripts/setup-*.ts
+scripts/deploy*.ts
+scripts/create-*.ts
+scripts/launch-*.ts
+scripts/update-*.ts
+scripts/backfill-*.ts
+scripts/rebalance-*.ts
+scripts/add-*.ts
+scripts/verify-*.sh
+scripts/e2e-*.ts
+
+# Sensitive files (defense in depth — these should not be in the repo
+# anyway, but if they ever come back we don't want them in the image)
+*-keypair.json
+treasury-keypair.json
+.test-wallets.json
+.env
+.env.*
+
+# Vercel
+.vercel/
+.vercelignore
+
+# Docs / config / git
+.git/
+.github/
+.gitignore
+.gitmodules
+.claude/
+*.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
