@@ -56,7 +56,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
   const { connection } = useConnection();
   const { publicKey, sendTransaction, signTransaction } = useWallet();
   const { swap, pending: curvePending, lastTx: curveLastTx, error: curveError } = useSwap();
-  const { allTokens } = useBalances();
+  const { allTokens, refreshBalances } = useBalances();
 
   const [payToken, setPayToken] = useState<SelectedToken>(SOL_TOKEN);
   const [receiveToken, setReceiveToken] = useState<SelectedToken>(SKYE_TOKEN);
@@ -247,15 +247,16 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         const sig1 = await executeJupiterSwap(jupQ, publicKey.toBase58(), connection, signTransaction!);
         setLastTx(sig1);
 
-        // Step 2: Curve buy (SOL → SKYE)
+        // Step 2: Curve buy (SOL → SKYE) with 5% slippage
         const solAmount = parseInt(jupQ.outAmount);
-        await swap(BigInt(solAmount), true, 0n);
+        const estOut2 = computeSwapOutput(pool!.wsolAmount, pool!.skyeAmount, solAmount, pool!.feeBps);
+        await swap(BigInt(solAmount), true, BigInt(Math.floor(estOut2 * 0.95)));
       } else if (route === "curve_then_jup" && jupQuote) {
         setJupPending(true);
-        // Step 1: Curve sell (SKYE → SOL)
+        // Step 1: Curve sell (SKYE → SOL) with 5% slippage
         const rawIn = Math.floor(amountNum * 10 ** DECIMALS);
         const solOut = computeCurveSellOutput(pool!.wsolAmount, pool!.skyeAmount, rawIn, pool!.feeBps);
-        await swap(BigInt(rawIn), false, 0n);
+        await swap(BigInt(rawIn), false, BigInt(Math.floor(solOut * 0.95)));
 
         // Step 2: Jupiter swap (SOL → X)
         const jupQ = await getJupiterQuote(NATIVE_MINT.toBase58(), receiveToken.mint, Math.floor(solOut), 300);
@@ -271,6 +272,7 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         setLastTx(sig);
       }
       setAmount("");
+      refreshBalances();
     } catch (e: any) {
       let msg = "Swap failed";
       if (e?.message?.includes("User rejected")) msg = "Transaction cancelled.";
@@ -282,9 +284,11 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
   }
 
   async function handleInitialBack() {
-    if (!publicKey || initialBack.tokensRaw <= 0) return;
-    await swap(BigInt(initialBack.tokensRaw), false, 0n);
+    if (!publicKey || !pool || initialBack.tokensRaw <= 0) return;
+    const solOut = computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, initialBack.tokensRaw, pool.feeBps);
+    await swap(BigInt(initialBack.tokensRaw), false, BigInt(Math.floor(solOut * 0.95)));
     setAmount("");
+    refreshBalances();
   }
 
   const pending = curvePending || jupPending;

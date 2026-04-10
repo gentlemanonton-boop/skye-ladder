@@ -9,11 +9,18 @@ use anchor_spl::{
 use crate::errors::SkyeAmmError;
 use crate::state::Pool;
 
+/// Platform authority — the ONLY key that can call set_fee_config on any pool.
+/// Hardcoded so that token launchers cannot redirect post-graduation swap fees.
+pub const PLATFORM_AUTHORITY: Pubkey = pubkey!("2gbiB89rcxffHPQBE35P42HTG45rJPHg7RgJ9jXfPXQW");
+
 pub fn handler(ctx: Context<InitializePool>, fee_bps: u16) -> Result<()> {
     require!(fee_bps <= 10_000, SkyeAmmError::InvalidFee);
 
     let pool = &mut ctx.accounts.pool;
-    pool.authority = ctx.accounts.authority.key();
+    // Always set to the hardcoded platform authority, NOT the launcher.
+    // Prevents malicious launchers from calling set_fee_config to redirect
+    // post-graduation swap fees to themselves.
+    pool.authority = PLATFORM_AUTHORITY;
     pool.skye_mint = ctx.accounts.skye_mint.key();
     pool.wsol_mint = ctx.accounts.wsol_mint.key();
     pool.skye_reserve = ctx.accounts.skye_reserve.key();

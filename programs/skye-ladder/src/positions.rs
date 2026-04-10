@@ -81,6 +81,20 @@ pub fn on_sell(
     require!(current_price > 0, SkyeLadderError::ZeroPrice);
     require!(tokens_to_sell > 0, SkyeLadderError::ZeroTokens);
 
+    // If the wallet has no positions, allow the sell unconditionally.
+    // This handles two cases:
+    //   1. Tokens received via wallet-to-wallet transfer where the receiver's
+    //      WalletRecord was never initialized (position data from on_buy was
+    //      silently discarded because save_wallet_record no-ops on system-owned
+    //      accounts). Without this guard, those tokens are permanently frozen.
+    //   2. Buys through third-party interfaces that don't create WalletRecords.
+    // The sell restriction was already enforced on the SENDER when the tokens
+    // were transferred, so allowing the receiver to sell freely does not create
+    // a bypass — the sender could only send what they were allowed to sell.
+    if wallet.positions.is_empty() {
+        return Ok(());
+    }
+
     // Build index + multiplier pairs, sorted by multiplier descending.
     // Stack-allocated: MAX_POSITIONS is 10, so no heap allocation needed.
     let mut indexed_buf = [(0usize, 0u128); MAX_POSITIONS];

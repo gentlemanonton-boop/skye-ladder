@@ -7,6 +7,11 @@ use spl_tlv_account_resolution::{
 
 use crate::state::Config;
 
+/// Platform authority — the ONLY key that can admin hook configs (pause,
+/// update_pool, update_extra_metas, transfer_authority). Hardcoded so that
+/// token launchers cannot manipulate sell restrictions on their own tokens.
+pub const PLATFORM_AUTHORITY: Pubkey = pubkey!("2gbiB89rcxffHPQBE35P42HTG45rJPHg7RgJ9jXfPXQW");
+
 /// Initialize the Skye Ladder transfer hook: creates the Config PDA
 /// and the ExtraAccountMetaList PDA required by Token-2022.
 ///
@@ -15,7 +20,10 @@ use crate::state::Config;
 pub fn handler(ctx: Context<Initialize>, pool: Pubkey, lb_pair: Pubkey) -> Result<()> {
     // Store config
     let config = &mut ctx.accounts.config;
-    config.authority = ctx.accounts.authority.key();
+    // Always set to the hardcoded platform authority, NOT the launcher.
+    // Prevents malicious launchers from pausing the hook or manipulating
+    // buy/sell classification on their own tokens.
+    config.authority = PLATFORM_AUTHORITY;
     config.mint = ctx.accounts.mint.key();
     config.pool = pool;
     config.lb_pair = lb_pair;

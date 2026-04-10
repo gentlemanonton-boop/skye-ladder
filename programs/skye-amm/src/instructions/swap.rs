@@ -143,13 +143,20 @@ pub fn handler<'info>(
         )?;
         require!(wsol_out >= min_amount_out, SkyeAmmError::SlippageExceeded);
 
-        // Fees are charged on the SKYE input side, but SKYE transfers go
-        // through the transfer hook — simpler to take the fee from the WSOL
-        // output instead (pool already holds the WSOL). User receives
-        // wsol_out minus the team's share; the rest stays in pool reserves.
+        // Fee was already deducted from the SKYE input by compute_swap_output.
+        // The `fee` value is in SKYE terms. Convert the team's 50% share to
+        // WSOL using the pre-trade price ratio (reserve_out / reserve_in).
+        //
+        // Previous bug: applied fee_bps to wsol_out a SECOND time, effectively
+        // charging sellers ~2% instead of 1% at 100 bps.
         let team_fee = if has_team_wallet && fee > 0 {
-            let wsol_fee = (wsol_out as u128) * (fee_bps as u128) / 10_000u128;
-            math::split_fee(wsol_fee as u64).0
+            let team_skye = math::split_fee(fee).0; // 50% of fee in SKYE terms
+            // Convert SKYE fee to WSOL equivalent using pre-trade reserves
+            let team_wsol = (team_skye as u128)
+                .checked_mul(pool.wsol_amount as u128)
+                .ok_or(SkyeAmmError::MathOverflow)?
+                / (pool.skye_amount as u128);
+            u64::try_from(team_wsol).map_err(|_| error!(SkyeAmmError::MathOverflow))?
         } else {
             0u64
         };
@@ -204,8 +211,14 @@ pub fn handler<'info>(
                     team_fee,
                     ctx.accounts.wsol_mint.decimals,
                 )?;
+            } else {
+                // Team account not provided — WSOL stays in pool reserve.
+                // Add team_fee back to cached wsol_amount to keep it in sync
+                // with the actual reserve balance.
+                let pool = &mut ctx.accounts.pool;
+                pool.wsol_amount = pool.wsol_amount.checked_add(team_fee)
+                    .ok_or(SkyeAmmError::MathOverflow)?;
             }
-            // If team account not provided, fee stays in pool (wsol_out already deducted)
         }
 
         msg!("SELL: {} SKYE -> {} WSOL (team fee: {})", amount_in, user_receives, team_fee);

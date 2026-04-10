@@ -317,11 +317,15 @@ export function LaunchTab() {
         const sig2 = await sendTransaction(tx2, connection);
         await connection.confirmTransaction(sig2, "confirmed");
       } catch (prestageErr: any) {
-        console.error("Auto-prestage failed (non-fatal):", prestageErr);
-        // The token still launches successfully on the curve. Without prestage
-        // the graduation relayer will skip this token (logging "no-pool"); a
-        // human can run scripts/prestage-skye-pool.ts adapted to this mint
-        // before bonding to fix it.
+        console.error("Auto-prestage failed:", prestageErr);
+        setError(
+          "Token launched but pool setup failed. Your token trades on the curve but cannot graduate to the AMM. Contact the team to fix this."
+        );
+        // Don't proceed to initial buy — the user needs to see this warning.
+        // The token exists on-chain and trades on the curve, but without the
+        // AMM pool the graduation relayer will skip it forever.
+        setLaunching(false);
+        return;
       }
 
       // ══════════════════════════════════════════════════
