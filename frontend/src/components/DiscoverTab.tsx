@@ -125,20 +125,36 @@ export function DiscoverTab() {
       let rawAmount: bigint;
       let estimatedOut = 0;
 
+      // For graduated tokens, read live AMM reserves for accurate estimates
+      let rSol = token.virtualSol;
+      let rToken = token.virtualToken;
+      let feeBps = 100;
+      if (token.graduated) {
+        const [ammPoolPDA] = PublicKey.findProgramAddressSync([Buffer.from("pool"), mint.toBuffer(), NATIVE_MINT.toBuffer()], SKYE_AMM_PROGRAM_ID);
+        const ammInfo = await connection.getAccountInfo(ammPoolPDA);
+        if (ammInfo && ammInfo.data.length >= 218) {
+          rToken = Number(ammInfo.data.readBigUInt64LE(200));
+          rSol = Number(ammInfo.data.readBigUInt64LE(208));
+          feeBps = ammInfo.data.readUInt16LE(216);
+        }
+      }
+
       if (isBuy) {
         rawAmount = BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL));
-        estimatedOut = token.graduated
-          ? Math.floor((amountNum * LAMPORTS_PER_SOL * (1 - 100/10000)) * token.virtualToken / (token.virtualSol + amountNum * LAMPORTS_PER_SOL * (1 - 100/10000)))
-          : computeCurveBuy(token.virtualSol, token.virtualToken, amountNum * LAMPORTS_PER_SOL);
+        const eff = amountNum * LAMPORTS_PER_SOL * (1 - feeBps / 10000);
+        estimatedOut = Math.floor(eff * rToken / (rSol + eff));
         tx.add(
           SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: userWsol, lamports: Number(rawAmount) }),
           createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
         );
       } else {
         rawAmount = BigInt(Math.floor(amountNum * 1e9));
-        estimatedOut = token.graduated
-          ? Math.floor((amountNum * 1e9 * (1 - 100/10000)) * token.virtualSol / (token.virtualToken + amountNum * 1e9 * (1 - 100/10000)))
-          : computeCurveSell(token.virtualSol, token.virtualToken, amountNum * 1e9);
+        if (token.graduated) {
+          const eff = amountNum * 1e9 * (1 - feeBps / 10000);
+          estimatedOut = Math.floor(eff * rSol / (rToken + eff));
+        } else {
+          estimatedOut = computeCurveSell(token.virtualSol, token.virtualToken, amountNum * 1e9);
+        }
       }
 
       const [configPDA] = PublicKey.findProgramAddressSync([Buffer.from("config"), mint.toBuffer()], SKYE_LADDER_ID);
