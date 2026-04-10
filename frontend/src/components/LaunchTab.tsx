@@ -325,32 +325,10 @@ export function LaunchTab() {
       }
 
       // ══════════════════════════════════════════════════
-      // TX 3: Upload image + JSON to Arweave + Metaplex createV1 (1 approval)
-      //
-      // Wrapped in try/catch — a metadata failure does not abort an otherwise
-      // successful launch. The launching user still sees the image via the
-      // localStorage cache (storeToken below), and the upload can be retried
-      // later via scripts/backfill-metadata.ts.
-      // ══════════════════════════════════════════════════
-      setStep(3);
-      try {
-        if (wallet.wallet?.adapter) {
-          await uploadAndCreateMetadata({
-            wallet: wallet.wallet.adapter,
-            mint: mint.toBase58(),
-            name, symbol, description,
-            imageFile,
-          });
-        }
-      } catch (metaErr: any) {
-        console.error("Metadata upload failed (non-fatal):", metaErr);
-      }
-
-      // ══════════════════════════════════════════════════
-      // TX 4 (OPTIONAL): Initial buy (1 approval)
+      // TX 3 (OPTIONAL): Initial buy (1 approval)
       // ══════════════════════════════════════════════════
       if (initialBuySolNum > 0) {
-        setStep(4);
+        setStep(3);
         // The launching wallet has no token ATA yet — TX 1 minted the supply
         // straight to the curve, so we create the creator's ATA fresh here.
         const creatorATA = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
@@ -425,8 +403,21 @@ export function LaunchTab() {
         launchedAt: Math.floor(Date.now() / 1000),
       });
 
-      setStep(5);
+      setStep(4);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
+
+      // Metadata upload runs in background AFTER launch is complete.
+      // The user already sees their token via localStorage cache. This
+      // handles the Arweave upload + Metaplex createV1 without blocking
+      // the launch flow. Can be retried via scripts/backfill-metadata.ts.
+      if (wallet.wallet?.adapter) {
+        uploadAndCreateMetadata({
+          wallet: wallet.wallet.adapter,
+          mint: mint.toBase58(),
+          name, symbol, description,
+          imageFile,
+        }).catch((metaErr) => console.error("Metadata upload failed (non-fatal):", metaErr));
+      }
 
     } catch (e: any) {
       setError(e.message || "Launch failed");
@@ -439,11 +430,10 @@ export function LaunchTab() {
     "",
     "Launching token...",
     "Pre-staging AMM pool...",
-    "Uploading metadata to Arweave...",
     "Buying initial position...",
     "Done!",
   ];
-  const isLaunching = step > 0 && step < 5;
+  const isLaunching = step > 0 && step < 4;
 
   return (
     <div className="space-y-6">

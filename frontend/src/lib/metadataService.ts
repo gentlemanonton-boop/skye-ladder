@@ -52,17 +52,10 @@ export async function uploadAndCreateMetadata(opts: {
     imageUri = uploaded;
   }
 
-  const baseDescription =
-    "Skye Ladder \u2014 Structured sell-restriction protocol on Solana. " +
-    "Token-2022 Transfer Hook enforces per-wallet sell limits that scale with price appreciation. " +
-    "Buys always unrestricted.";
-
   const metadataJson = {
     name: opts.name,
     symbol: opts.symbol,
-    description: opts.description
-      ? `${opts.description}\n\n${baseDescription}`
-      : baseDescription,
+    description: opts.description || "",
     image: imageUri,
     attributes: SKYE_LADDER_ATTRIBUTES,
     properties: { category: "currency" },
