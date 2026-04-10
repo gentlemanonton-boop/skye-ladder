@@ -37,6 +37,7 @@ const POOL_FEE_BPS = 100; // 1% — matches the curve's fee_bps for continuity
 // sha256("global:<name>")[0..8]:
 const INIT_POOL_DISC      = new Uint8Array([95,180,10,172,84,174,232,40]);
 const SET_FEE_CONFIG_DISC = new Uint8Array([221,222,52,206,114,198,64,91]);
+const CREATE_WR_DISC      = new Uint8Array([197,118,207,205,173,88,237,254]);
 
 export function LaunchTab() {
   const wallet = useWallet();
@@ -304,6 +305,25 @@ export function LaunchTab() {
           initPoolIx,
           // Wire fees to the treasury
           setFeeIx,
+          // Create the pool's WalletRecord so the transfer hook can write
+          // position data when tokens move into the pool (especially at graduation)
+          (() => {
+            const [poolWR] = PublicKey.findProgramAddressSync(
+              [Buffer.from("wallet"), poolPda.toBuffer(), mint.toBuffer()],
+              SKYE_LADDER_ID,
+            );
+            return new TransactionInstruction({
+              programId: SKYE_LADDER_ID,
+              data: Buffer.from(CREATE_WR_DISC),
+              keys: [
+                { pubkey: publicKey, isSigner: true, isWritable: true },
+                { pubkey: poolPda, isSigner: false, isWritable: false },
+                { pubkey: mint, isSigner: false, isWritable: false },
+                { pubkey: poolWR, isSigner: false, isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+              ],
+            });
+          })(),
           // Pre-create the incinerator's LP token ATA so seed_pool_from_curve
           // has somewhere to mint LP tokens at graduation time
           createAssociatedTokenAccountInstruction(
@@ -324,7 +344,7 @@ export function LaunchTab() {
         // Don't proceed to initial buy — the user needs to see this warning.
         // The token exists on-chain and trades on the curve, but without the
         // AMM pool the graduation relayer will skip it forever.
-        setLaunching(false);
+        setStep(0);
         return;
       }
 

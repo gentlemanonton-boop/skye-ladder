@@ -11,7 +11,7 @@ import {
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
-import { SKYE_MINT, SKYE_LADDER_PROGRAM_ID, SKYE_CURVE_ID, SWAP_DISC } from "../constants";
+import { SKYE_MINT, SKYE_LADDER_PROGRAM_ID, SKYE_CURVE_ID, SKYE_AMM_PROGRAM_ID, SWAP_DISC } from "../constants";
 import { getCurvePDA, getWalletRecordPDA, getConfigPDA, getExtraMetasPDA } from "../lib/pda";
 
 export function useSwap() {
@@ -22,16 +22,17 @@ export function useSwap() {
   const [error, setError] = useState<string | null>(null);
 
   const swap = useCallback(
-    async (amountRaw: bigint, buy: boolean, minOut: bigint = 0n) => {
+    async (
+      amountRaw: bigint,
+      buy: boolean,
+      minOut: bigint = 0n,
+      graduated?: boolean,
+      poolState?: { poolPDA: string; skyeReserveKey: string; wsolReserveKey: string; teamWallet: string },
+    ) => {
       if (!publicKey || !sendTransaction) return;
       setPending(true); setError(null); setLastTx(null);
 
       try {
-        const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
-        const [curvePDA] = getCurvePDA();
-        const tokenReserve = getAssociatedTokenAddressSync(SKYE_MINT, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const solReserve = getAssociatedTokenAddressSync(NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const userToken = getAssociatedTokenAddressSync(SKYE_MINT, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
         const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
 
@@ -63,18 +64,6 @@ export function useSwap() {
 
         const [configPDA] = getConfigPDA();
         const [extraMetasPDA] = getExtraMetasPDA();
-        const [curveWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), curvePDA.toBuffer(), SKYE_MINT.toBuffer()], SKYE_LADDER_PROGRAM_ID);
-        const senderWR = buy ? curveWR : buyerWR;
-        const receiverWR = buy ? buyerWR : curveWR;
-
-        const hookAccounts = [
-          { pubkey: configPDA, isSigner: false, isWritable: false },
-          { pubkey: senderWR, isSigner: false, isWritable: true },
-          { pubkey: receiverWR, isSigner: false, isWritable: true },
-          { pubkey: curvePDA, isSigner: false, isWritable: false },
-          { pubkey: SKYE_LADDER_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
-        ];
 
         const swapData = Buffer.alloc(8 + 8 + 8 + 1);
         swapData.set(SWAP_DISC, 0);
@@ -82,26 +71,85 @@ export function useSwap() {
         swapData.writeBigUInt64LE(minOut, 16);
         swapData[24] = buy ? 1 : 0;
 
-        ixs.push(new TransactionInstruction({
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: curvePDA, isSigner: false, isWritable: true },
-            { pubkey: SKYE_MINT, isSigner: false, isWritable: false },
-            { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
-            { pubkey: userToken, isSigner: false, isWritable: true },
-            { pubkey: userWsol, isSigner: false, isWritable: true },
-            { pubkey: tokenReserve, isSigner: false, isWritable: true },
-            { pubkey: solReserve, isSigner: false, isWritable: true },
-            { pubkey: treasuryWsol, isSigner: false, isWritable: true },
-            { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-            ...hookAccounts,
-          ],
-          programId: SKYE_CURVE_ID,
-          data: swapData,
-        }));
+        if (graduated && poolState) {
+          const ammPoolPDA = new PublicKey(poolState.poolPDA);
+          const skyeReserve = new PublicKey(poolState.skyeReserveKey);
+          const wsolReserve = new PublicKey(poolState.wsolReserveKey);
+          const teamWallet = new PublicKey(poolState.teamWallet);
 
-        // After sell: close WSOL ATA to unwrap back to native SOL
+          const [poolWR] = getWalletRecordPDA(ammPoolPDA);
+          const senderWR = buy ? poolWR : buyerWR;
+          const receiverWR = buy ? buyerWR : poolWR;
+
+          const hookAccounts = [
+            { pubkey: configPDA, isSigner: false, isWritable: false },
+            { pubkey: senderWR, isSigner: false, isWritable: true },
+            { pubkey: receiverWR, isSigner: false, isWritable: true },
+            { pubkey: ammPoolPDA, isSigner: false, isWritable: false },
+            { pubkey: SKYE_LADDER_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
+          ];
+
+          const teamWalletAccount = { pubkey: teamWallet, isSigner: false, isWritable: true };
+
+          ixs.push(new TransactionInstruction({
+            keys: [
+              { pubkey: publicKey, isSigner: true, isWritable: true },
+              { pubkey: ammPoolPDA, isSigner: false, isWritable: true },
+              { pubkey: SKYE_MINT, isSigner: false, isWritable: false },
+              { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+              { pubkey: userToken, isSigner: false, isWritable: true },
+              { pubkey: userWsol, isSigner: false, isWritable: true },
+              { pubkey: skyeReserve, isSigner: false, isWritable: true },
+              { pubkey: wsolReserve, isSigner: false, isWritable: true },
+              { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+              { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+              ...hookAccounts,
+              teamWalletAccount,
+            ],
+            programId: SKYE_AMM_PROGRAM_ID,
+            data: swapData,
+          }));
+        } else {
+          const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
+          const [curvePDA] = getCurvePDA();
+          const tokenReserve = getAssociatedTokenAddressSync(SKYE_MINT, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+          const solReserve = getAssociatedTokenAddressSync(NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+          const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+
+          const [curveWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), curvePDA.toBuffer(), SKYE_MINT.toBuffer()], SKYE_LADDER_PROGRAM_ID);
+          const senderWR = buy ? curveWR : buyerWR;
+          const receiverWR = buy ? buyerWR : curveWR;
+
+          const hookAccounts = [
+            { pubkey: configPDA, isSigner: false, isWritable: false },
+            { pubkey: senderWR, isSigner: false, isWritable: true },
+            { pubkey: receiverWR, isSigner: false, isWritable: true },
+            { pubkey: curvePDA, isSigner: false, isWritable: false },
+            { pubkey: SKYE_LADDER_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
+          ];
+
+          ixs.push(new TransactionInstruction({
+            keys: [
+              { pubkey: publicKey, isSigner: true, isWritable: true },
+              { pubkey: curvePDA, isSigner: false, isWritable: true },
+              { pubkey: SKYE_MINT, isSigner: false, isWritable: false },
+              { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+              { pubkey: userToken, isSigner: false, isWritable: true },
+              { pubkey: userWsol, isSigner: false, isWritable: true },
+              { pubkey: tokenReserve, isSigner: false, isWritable: true },
+              { pubkey: solReserve, isSigner: false, isWritable: true },
+              { pubkey: treasuryWsol, isSigner: false, isWritable: true },
+              { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+              { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+              ...hookAccounts,
+            ],
+            programId: SKYE_CURVE_ID,
+            data: swapData,
+          }));
+        }
+
         if (!buy) {
           ixs.push(createCloseAccountInstruction(userWsol, publicKey, publicKey, [], TOKEN_PROGRAM_ID));
         }

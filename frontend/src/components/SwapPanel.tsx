@@ -106,11 +106,11 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
       priceImpactPct = ((effectivePrice - spotPrice) / spotPrice) * 100;
     } else if (isCurveSell) {
       const rawIn = amountNum * 10 ** DECIMALS;
-      // Use the curve-specific helper: on-chain takes the fee on the SOL output
-      // side AND deducts treasury_fee a second time, so the user effectively
-      // pays ~1.5 × fee_bps. The generic computeSwapOutput is only correct for
-      // buys.
-      outputRaw = computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, rawIn, pool.feeBps);
+      // Curve sells: fee applied on SOL output side (see math::split_sell_output).
+      // AMM sells: fee applied on input side via compute_swap_output.
+      outputRaw = pool.graduated
+        ? computeSwapOutput(pool.skyeAmount, pool.wsolAmount, rawIn, pool.feeBps)
+        : computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, rawIn, pool.feeBps);
       outputHuman = outputRaw / LAMPORTS_PER_SOL;
       const spotPrice = pool.skyeAmount / pool.wsolAmount;
       const effectivePrice = rawIn / outputRaw;
@@ -226,6 +226,10 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
     }
   }
 
+  const graduatedState = pool?.graduated && pool.poolPDA && pool.skyeReserveKey && pool.wsolReserveKey && pool.teamWallet
+    ? { poolPDA: pool.poolPDA, skyeReserveKey: pool.skyeReserveKey, wsolReserveKey: pool.wsolReserveKey, teamWallet: pool.teamWallet }
+    : undefined;
+
   async function handleSubmit() {
     if (!publicKey || !sendTransaction || !signTransaction || amountNum <= 0) return;
     setJupError(null);
@@ -234,10 +238,10 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
     try {
       if (isCurveBuy) {
         const minOut = BigInt(Math.floor(outputRaw * 0.95));
-        await swap(BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL)), true, minOut);
+        await swap(BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL)), true, minOut, pool?.graduated, graduatedState);
       } else if (isCurveSell) {
         const minOut = BigInt(Math.floor(outputRaw * 0.95));
-        await swap(BigInt(Math.floor(amountNum * 10 ** DECIMALS)), false, minOut);
+        await swap(BigInt(Math.floor(amountNum * 10 ** DECIMALS)), false, minOut, pool?.graduated, graduatedState);
       } else if (route === "jup_then_curve" && jupQuote) {
         setJupPending(true);
         // Step 1: Jupiter swap (X → SOL)
@@ -247,16 +251,18 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         const sig1 = await executeJupiterSwap(jupQ, publicKey.toBase58(), connection, signTransaction!);
         setLastTx(sig1);
 
-        // Step 2: Curve buy (SOL → SKYE) with 5% slippage
+        // Step 2: Buy (SOL → SKYE) with 5% slippage
         const solAmount = parseInt(jupQ.outAmount);
         const estOut2 = computeSwapOutput(pool!.wsolAmount, pool!.skyeAmount, solAmount, pool!.feeBps);
-        await swap(BigInt(solAmount), true, BigInt(Math.floor(estOut2 * 0.95)));
+        await swap(BigInt(solAmount), true, BigInt(Math.floor(estOut2 * 0.95)), pool?.graduated, graduatedState);
       } else if (route === "curve_then_jup" && jupQuote) {
         setJupPending(true);
-        // Step 1: Curve sell (SKYE → SOL) with 5% slippage
+        // Step 1: Sell (SKYE → SOL) with 5% slippage
         const rawIn = Math.floor(amountNum * 10 ** DECIMALS);
-        const solOut = computeCurveSellOutput(pool!.wsolAmount, pool!.skyeAmount, rawIn, pool!.feeBps);
-        await swap(BigInt(rawIn), false, BigInt(Math.floor(solOut * 0.95)));
+        const solOut = pool?.graduated
+          ? computeSwapOutput(pool.skyeAmount, pool.wsolAmount, rawIn, pool.feeBps)
+          : computeCurveSellOutput(pool!.wsolAmount, pool!.skyeAmount, rawIn, pool!.feeBps);
+        await swap(BigInt(rawIn), false, BigInt(Math.floor(solOut * 0.95)), pool?.graduated, graduatedState);
 
         // Step 2: Jupiter swap (SOL → X)
         const jupQ = await getJupiterQuote(NATIVE_MINT.toBase58(), receiveToken.mint, Math.floor(solOut), 300);
@@ -285,8 +291,10 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
 
   async function handleInitialBack() {
     if (!publicKey || !pool || initialBack.tokensRaw <= 0) return;
-    const solOut = computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, initialBack.tokensRaw, pool.feeBps);
-    await swap(BigInt(initialBack.tokensRaw), false, BigInt(Math.floor(solOut * 0.95)));
+    const solOut = pool.graduated
+      ? computeSwapOutput(pool.skyeAmount, pool.wsolAmount, initialBack.tokensRaw, pool.feeBps)
+      : computeCurveSellOutput(pool.wsolAmount, pool.skyeAmount, initialBack.tokensRaw, pool.feeBps);
+    await swap(BigInt(initialBack.tokensRaw), false, BigInt(Math.floor(solOut * 0.95)), pool.graduated, graduatedState);
     setAmount("");
     refreshBalances();
   }

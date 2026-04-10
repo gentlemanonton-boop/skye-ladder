@@ -11,7 +11,7 @@ import ladderIdl from "../idl/skye_ladder.json";
 import { formatUsd } from "../lib/format";
 import { useSolPrice } from "../hooks/useSolPrice";
 import { useDiscoveredTokens, type DiscoveredTokenBase } from "../hooks/useDiscoveredTokens";
-import { SKYE_CURVE_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS, SKYE_MINT } from "../constants";
+import { SKYE_CURVE_ID, SKYE_AMM_PROGRAM_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS, SKYE_MINT } from "../constants";
 const GRADUATION_SOL = 85;
 
 // Re-export of the shared base type for local code. SKYE is filtered out
@@ -99,9 +99,6 @@ export function DiscoverTab() {
       const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
       const mint = new PublicKey(token.mint);
       const [curvePDA] = PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], SKYE_CURVE_ID);
-      const tokenReserve = getAssociatedTokenAddressSync(mint, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-      const solReserve = getAssociatedTokenAddressSync(NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-      const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
       const userToken = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
       const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
 
@@ -130,33 +127,23 @@ export function DiscoverTab() {
 
       if (isBuy) {
         rawAmount = BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL));
-        estimatedOut = computeCurveBuy(token.virtualSol, token.virtualToken, amountNum * LAMPORTS_PER_SOL);
+        estimatedOut = token.graduated
+          ? Math.floor((amountNum * LAMPORTS_PER_SOL * (1 - 100/10000)) * token.virtualToken / (token.virtualSol + amountNum * LAMPORTS_PER_SOL * (1 - 100/10000)))
+          : computeCurveBuy(token.virtualSol, token.virtualToken, amountNum * LAMPORTS_PER_SOL);
         tx.add(
           SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: userWsol, lamports: Number(rawAmount) }),
           createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
         );
       } else {
         rawAmount = BigInt(Math.floor(amountNum * 1e9));
-        estimatedOut = computeCurveSell(token.virtualSol, token.virtualToken, amountNum * 1e9);
+        estimatedOut = token.graduated
+          ? Math.floor((amountNum * 1e9 * (1 - 100/10000)) * token.virtualSol / (token.virtualToken + amountNum * 1e9 * (1 - 100/10000)))
+          : computeCurveSell(token.virtualSol, token.virtualToken, amountNum * 1e9);
       }
 
       const [configPDA] = PublicKey.findProgramAddressSync([Buffer.from("config"), mint.toBuffer()], SKYE_LADDER_ID);
       const [extraMetasPDA] = PublicKey.findProgramAddressSync([Buffer.from("extra-account-metas"), mint.toBuffer()], SKYE_LADDER_ID);
-      const [curveWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), curvePDA.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
 
-      const senderWR = isBuy ? curveWR : buyerWR;
-      const receiverWR = isBuy ? buyerWR : curveWR;
-
-      const hookAccounts = [
-        { pubkey: configPDA, isSigner: false, isWritable: false },
-        { pubkey: senderWR, isSigner: false, isWritable: true },
-        { pubkey: receiverWR, isSigner: false, isWritable: true },
-        { pubkey: curvePDA, isSigner: false, isWritable: false },
-        { pubkey: SKYE_LADDER_ID, isSigner: false, isWritable: false },
-        { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
-      ];
-
-      // Slippage protection: 5% tolerance
       const minOut = BigInt(Math.floor(estimatedOut * 0.95));
 
       const swapData = Buffer.alloc(8 + 8 + 8 + 1);
@@ -165,24 +152,83 @@ export function DiscoverTab() {
       swapData.writeBigUInt64LE(minOut, 16);
       swapData[24] = isBuy ? 1 : 0;
 
-      tx.add({
-        keys: [
-          { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: curvePDA, isSigner: false, isWritable: true },
-          { pubkey: mint, isSigner: false, isWritable: false },
-          { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
-          { pubkey: userToken, isSigner: false, isWritable: true },
-          { pubkey: userWsol, isSigner: false, isWritable: true },
-          { pubkey: tokenReserve, isSigner: false, isWritable: true },
-          { pubkey: solReserve, isSigner: false, isWritable: true },
-          { pubkey: treasuryWsol, isSigner: false, isWritable: true },
-          { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          ...hookAccounts,
-        ],
-        programId: SKYE_CURVE_ID,
-        data: swapData,
-      });
+      if (token.graduated) {
+        // AMM swap for graduated tokens
+        const [ammPoolPDA] = PublicKey.findProgramAddressSync([Buffer.from("pool"), mint.toBuffer(), NATIVE_MINT.toBuffer()], SKYE_AMM_PROGRAM_ID);
+        const ammInfo = await connection.getAccountInfo(ammPoolPDA);
+        if (!ammInfo || ammInfo.data.length < 252) throw new Error("AMM pool not found for graduated token");
+        const skyeReserve = new PublicKey(ammInfo.data.subarray(104, 136));
+        const wsolReserve = new PublicKey(ammInfo.data.subarray(136, 168));
+        const teamWallet = new PublicKey(ammInfo.data.subarray(220, 252));
+
+        const [poolWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), ammPoolPDA.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
+        const senderWR = isBuy ? poolWR : buyerWR;
+        const receiverWR = isBuy ? buyerWR : poolWR;
+
+        const hookAccounts = [
+          { pubkey: configPDA, isSigner: false, isWritable: false },
+          { pubkey: senderWR, isSigner: false, isWritable: true },
+          { pubkey: receiverWR, isSigner: false, isWritable: true },
+          { pubkey: ammPoolPDA, isSigner: false, isWritable: false },
+          { pubkey: SKYE_LADDER_ID, isSigner: false, isWritable: false },
+          { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
+        ];
+
+        tx.add({
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: ammPoolPDA, isSigner: false, isWritable: true },
+            { pubkey: mint, isSigner: false, isWritable: false },
+            { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+            { pubkey: userToken, isSigner: false, isWritable: true },
+            { pubkey: userWsol, isSigner: false, isWritable: true },
+            { pubkey: skyeReserve, isSigner: false, isWritable: true },
+            { pubkey: wsolReserve, isSigner: false, isWritable: true },
+            { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            ...hookAccounts,
+            { pubkey: teamWallet, isSigner: false, isWritable: true },
+          ],
+          programId: SKYE_AMM_PROGRAM_ID,
+          data: swapData,
+        });
+      } else {
+        // Curve swap for pre-graduation tokens
+        const tokenReserve = getAssociatedTokenAddressSync(mint, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const solReserve = getAssociatedTokenAddressSync(NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const [curveWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), curvePDA.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
+        const senderWR = isBuy ? curveWR : buyerWR;
+        const receiverWR = isBuy ? buyerWR : curveWR;
+
+        const hookAccounts = [
+          { pubkey: configPDA, isSigner: false, isWritable: false },
+          { pubkey: senderWR, isSigner: false, isWritable: true },
+          { pubkey: receiverWR, isSigner: false, isWritable: true },
+          { pubkey: curvePDA, isSigner: false, isWritable: false },
+          { pubkey: SKYE_LADDER_ID, isSigner: false, isWritable: false },
+          { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
+        ];
+
+        tx.add({
+          keys: [
+            { pubkey: publicKey, isSigner: true, isWritable: true },
+            { pubkey: curvePDA, isSigner: false, isWritable: true },
+            { pubkey: mint, isSigner: false, isWritable: false },
+            { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+            { pubkey: userToken, isSigner: false, isWritable: true },
+            { pubkey: userWsol, isSigner: false, isWritable: true },
+            { pubkey: tokenReserve, isSigner: false, isWritable: true },
+            { pubkey: solReserve, isSigner: false, isWritable: true },
+            { pubkey: treasuryWsol, isSigner: false, isWritable: true },
+            { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            ...hookAccounts,
+          ],
+          programId: SKYE_CURVE_ID,
+          data: swapData,
+        });
+      }
 
       // After sell: close WSOL ATA to unwrap back to native SOL
       if (!isBuy) {
