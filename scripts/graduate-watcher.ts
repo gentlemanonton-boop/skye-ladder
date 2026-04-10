@@ -36,6 +36,18 @@
  *        # Use a different keypair
  *        npx ts-node scripts/graduate-watcher.ts --keypair ~/.skye/other.json
  *
+ *        # Provide the admin authority to auto-switch hook after graduation
+ *        npx ts-node scripts/graduate-watcher.ts --admin-keypair ~/.config/solana/id.json
+ *        # or via env var:
+ *        ADMIN_KEYPAIR_JSON='[12,34,...]' npx ts-node scripts/graduate-watcher.ts
+ *
+ * POST-GRADUATION HOOK SWITCHOVER:
+ * After graduation, the transfer hook's price source and pool classification
+ * must be switched from the curve to the AMM. If --admin-keypair is provided
+ * (or ADMIN_KEYPAIR_JSON env var), the watcher fires update_pool +
+ * update_extra_metas automatically. Without it, a manual call is required
+ * or token transfers will misclassify AMM trades.
+ *
  * SAFETY: the hot wallet only needs SOL for tx fees. NEVER use your main
  * upgrade authority key for this — if the relayer machine is compromised,
  * the worst case is the attacker drains the hot wallet's tiny SOL balance.
@@ -95,6 +107,7 @@ const ONCE        = args.includes("--once");
 const INTERVAL_S  = parseInt(flag("interval") || process.env.WATCHER_INTERVAL_S || "10", 10);
 const RPC_URL     = flag("rpc") || process.env.RPC_URL || "https://api.mainnet-beta.solana.com";
 const KEYPAIR     = flag("keypair") || path.join(process.env.HOME || ".", ".skye", "relayer-keypair.json");
+const ADMIN_KEYPAIR = flag("admin-keypair") || path.join(process.env.HOME || ".", ".config", "solana", "id.json");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function discriminator(name: string): Buffer {
@@ -391,6 +404,99 @@ async function tryGraduate(
   }
 }
 
+// ── Post-graduation: switch hook price source from Curve → AMM ──────────────
+//
+// After graduate completes, config.pool still points to the curve's token
+// reserve and config.lb_pair still points to the curve PDA. The transfer hook
+// uses these to classify buys/sells and read the spot price. Without updating
+// them, AMM trades would be misclassified as wallet-to-wallet transfers, and
+// the price source (curve virtual reserves) would go stale.
+//
+// This fires update_pool + update_extra_metas to switch to the AMM pool.
+// Requires the admin authority keypair (--admin-keypair or ADMIN_KEYPAIR_JSON).
+
+function loadAdminKeypair(): Keypair | null {
+  const envJson = process.env.ADMIN_KEYPAIR_JSON;
+  if (envJson) {
+    try {
+      const raw = JSON.parse(envJson) as number[];
+      return Keypair.fromSecretKey(Uint8Array.from(raw));
+    } catch { return null; }
+  }
+  if (fs.existsSync(ADMIN_KEYPAIR)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(ADMIN_KEYPAIR, "utf-8")) as number[];
+      return Keypair.fromSecretKey(Uint8Array.from(raw));
+    } catch { return null; }
+  }
+  return null;
+}
+
+async function switchHookToAmm(
+  conn: Connection,
+  admin: Keypair,
+  mint: PublicKey,
+): Promise<boolean> {
+  const [pool] = poolPda(mint);
+  const [hookCfg] = hookConfigPda(mint);
+  const [extraMetas] = hookExtraMetasPda(mint);
+
+  // The AMM pool's SKYE reserve ATA — this becomes the new config.pool
+  // (used by the hook to classify source/dest as buy/sell)
+  const ammSkyeReserve = getAssociatedTokenAddressSync(
+    mint, pool, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+  );
+
+  // update_pool(new_pool, new_lb_pair) — args: 32 + 32 bytes
+  const updatePoolData = Buffer.alloc(8 + 32 + 32);
+  updatePoolData.set(discriminator("update_pool"), 0);
+  ammSkyeReserve.toBuffer().copy(updatePoolData, 8);       // new_pool = AMM skye reserve
+  pool.toBuffer().copy(updatePoolData, 40);                 // new_lb_pair = AMM pool PDA
+
+  const updatePoolIx = new TransactionInstruction({
+    programId: SKYE_LADDER_ID,
+    data: updatePoolData,
+    keys: [
+      { pubkey: admin.publicKey, isSigner: true, isWritable: false },
+      { pubkey: mint,            isSigner: false, isWritable: false },
+      { pubkey: hookCfg,         isSigner: false, isWritable: true  },
+    ],
+  });
+
+  // update_extra_metas() — no args
+  const updateMetasData = discriminator("update_extra_metas");
+
+  const updateMetasIx = new TransactionInstruction({
+    programId: SKYE_LADDER_ID,
+    data: updateMetasData,
+    keys: [
+      { pubkey: admin.publicKey, isSigner: true,  isWritable: false },
+      { pubkey: mint,            isSigner: false, isWritable: false },
+      { pubkey: hookCfg,         isSigner: false, isWritable: false },
+      { pubkey: extraMetas,      isSigner: false, isWritable: true  },
+    ],
+  });
+
+  const tx = new Transaction().add(updatePoolIx, updateMetasIx);
+  tx.feePayer = admin.publicKey;
+  const { blockhash } = await conn.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+
+  try {
+    const sig = await sendAndConfirmTransaction(conn, tx, [admin], {
+      commitment: "confirmed",
+      skipPreflight: false,
+    });
+    console.log(`[${ts()}] ✓ HOOK SWITCHED to AMM for ${mint.toBase58().slice(0,8)}…  tx: ${sig}`);
+    return true;
+  } catch (e: any) {
+    console.error(`[${ts()}] ✗ Hook switchover failed for ${mint.toBase58().slice(0,8)}…: ${e.message || e}`);
+    if (e.logs) e.logs.slice(0, 15).forEach((l: string) => console.error(`           ${l}`));
+    console.error(`         ⚠ MANUAL ACTION REQUIRED: run update_pool + update_extra_metas for this mint`);
+    return false;
+  }
+}
+
 // ── Main loop ────────────────────────────────────────────────────────────────
 async function main() {
   console.log("═══════════════════════════════════════════════════════════════");
@@ -471,10 +577,23 @@ async function main() {
       // own transaction; if one fails the others still get tried.
       for (const c of ready) {
         console.log(`[${ts()}] ▲ THRESHOLD REACHED for ${c.mint.toBase58()} — firing graduate`);
-        await tryGraduate(conn, payer, c);
-        // Whatever the result (graduated, skipped, error, no-pool), we
-        // continue the loop. Successful graduations get picked up on the
-        // next poll as `graduated=true` and filter out automatically.
+        const result = await tryGraduate(conn, payer, c);
+
+        // After a successful graduation, immediately switch the transfer
+        // hook's price source and pool classification from curve → AMM.
+        // Without this, all AMM trades would be misclassified and the
+        // hook would read stale curve data for the spot price.
+        if (result === "graduated") {
+          const admin = loadAdminKeypair();
+          if (admin) {
+            console.log(`[${ts()}] → Switching hook to AMM for ${c.mint.toBase58().slice(0,8)}…`);
+            await switchHookToAmm(conn, admin, c.mint);
+          } else {
+            console.error(`[${ts()}] ⚠ NO ADMIN KEY — hook NOT switched to AMM for ${c.mint.toBase58().slice(0,8)}…`);
+            console.error(`         Token transfers will use stale curve price data until update_pool + update_extra_metas are called manually.`);
+            console.error(`         Provide --admin-keypair <path> or set ADMIN_KEYPAIR_JSON env var.`);
+          }
+        }
       }
     } catch (e: any) {
       console.error(`[${ts()}] poll #${iter} error: ${e.message || e}`);

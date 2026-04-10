@@ -27,6 +27,11 @@ COPY scripts/graduate-watcher.ts ./scripts/graduate-watcher.ts
 # Configurable env vars (override at deploy time):
 #   RELAYER_KEYPAIR_JSON  — REQUIRED. Hot wallet's secret key as a JSON
 #                            byte array, e.g. "[12,34,56,...]".
+#   ADMIN_KEYPAIR_JSON    — RECOMMENDED. Admin authority's secret key as a
+#                            JSON byte array. Used to auto-switch the transfer
+#                            hook from curve → AMM after graduation. Without
+#                            this, a manual update_pool + update_extra_metas
+#                            call is required or transfers will freeze.
 #   RPC_URL               — optional. Solana RPC. Defaults to public mainnet.
 #   WATCHER_INTERVAL_S    — optional. Poll interval in seconds. Default 10.
 ENV NODE_ENV=production
