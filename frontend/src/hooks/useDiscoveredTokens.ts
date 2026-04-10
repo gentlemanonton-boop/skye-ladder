@@ -60,6 +60,8 @@ const DEAD_MINTS = new Set([
   "4w1DQR7HuVNdK6YDKvgyGSQ7A6Ba7ChWL4Hof1HKw1j",
   "6XByX9NXn1vvoyEYof6b6VEp6RVKGTKxdydurB6PoYtC", // HODL (original test)
   "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL (no on-chain metadata)
+  "5o35mhPhqnBvVSfcP4fRxvyHNPZLu2MZZC6gbafQRxS8", // test launch (no hook config)
+  "HTPUwZ7Rn2D2CPFyaBt5JCqhHBKe4VvnxVbkghBJdG5V", // test launch (no hook config)
 ]);
 
 const REFRESH_TTL_MS = 30_000;       // in-memory token cache: background refresh after this
