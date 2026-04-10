@@ -85,7 +85,7 @@ export function computeSellableTokens(pos: Position, effectiveBps: number): numb
 function sanitizePosition(pos: Position, currentPrice: number): Position {
   if (pos.entryPrice === 0 || pos.tokenBalance === 0 || currentPrice === 0) return pos;
   const currentPriceScaled = currentPrice * PRICE_SCALE;
-  if (pos.entryPrice > currentPriceScaled * 1000) {
+  if (pos.entryPrice > currentPriceScaled * 1_000_000) {
     return {
       ...pos,
       entryPrice: currentPriceScaled,

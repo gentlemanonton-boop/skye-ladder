@@ -17,6 +17,9 @@ default = []
 # Enables the admin-only `set_test_price` instruction. NEVER enable for mainnet.
 # Build for devnet/localnet with: `anchor build -- --features test-price`
 test-price = []
+# Enables msg!() logging in the transfer hook hot path. Costs ~200-500 CU per
+# transfer. Omit for mainnet builds to save compute units.
+debug-logs = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]

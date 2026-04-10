@@ -44,7 +44,7 @@ pub fn read_spot_price_from_pool(data: &[u8]) -> Result<u64> {
             .ok_or(SkyeLadderError::MathOverflow)?
             .checked_div(virtual_token as u128)
             .ok_or(SkyeLadderError::ZeroPrice)?;
-        return Ok(price as u64);
+        return Ok(u64::try_from(price).map_err(|_| error!(SkyeLadderError::MathOverflow))?);
     }
 
     // Fallback: try AMM offsets directly
@@ -66,5 +66,5 @@ pub fn read_spot_price_from_pool(data: &[u8]) -> Result<u64> {
         .checked_div(skye_amount as u128)
         .ok_or(SkyeLadderError::ZeroPrice)?;
 
-    Ok(price as u64)
+    Ok(u64::try_from(price).map_err(|_| error!(SkyeLadderError::MathOverflow))?)
 }

@@ -64,12 +64,25 @@ pub struct InitializePool<'info> {
 
     /// Pool's SKYE reserve — Token-2022 token account owned by pool PDA.
     /// Must be created before calling this instruction.
-    /// CHECK: Verified to be a token account for the correct mint via constraint.
+    /// CHECK: Validated that this account is owned by the Token-2022 or Token
+    /// program (i.e. it is a real token account). The pool PDA is the authority
+    /// check at transfer time, providing implicit ownership validation.
+    #[account(
+        constraint = *skye_reserve.owner == anchor_spl::token_2022::Token2022::id()
+            || *skye_reserve.owner == anchor_spl::token::Token::id()
+            @ SkyeAmmError::InvalidMint
+    )]
     pub skye_reserve: AccountInfo<'info>,
 
     /// Pool's WSOL reserve — SPL Token account owned by pool PDA.
     /// Must be created before calling this instruction.
-    /// CHECK: Verified to be a token account for the correct mint via constraint.
+    /// CHECK: Validated that this account is owned by the Token-2022 or Token
+    /// program (i.e. it is a real token account).
+    #[account(
+        constraint = *wsol_reserve.owner == anchor_spl::token_2022::Token2022::id()
+            || *wsol_reserve.owner == anchor_spl::token::Token::id()
+            @ SkyeAmmError::InvalidMint
+    )]
     pub wsol_reserve: AccountInfo<'info>,
 
     /// LP token mint — created before calling this instruction.

@@ -1,0 +1,22 @@
+# Gitleaks configuration for Skye Ladder
+# https://github.com/gitleaks/gitleaks
+
+title = "Skye Ladder Secret Scan"
+
+[allowlist]
+  # npm integrity hashes, Solana program IDs, and public keys are not secrets
+  regexTarget = "line"
+  regexes = [
+    '''integrity.*sha512-''',
+    '''resolved.*registry\.npmjs\.org''',
+  ]
+
+  paths = [
+    '''node_modules''',
+    '''target''',
+    '''test-ledger''',
+    '''\.anchor''',
+    '''package-lock\.json''',
+    '''frontend/package-lock\.json''',
+    '''Cargo\.lock''',
+  ]

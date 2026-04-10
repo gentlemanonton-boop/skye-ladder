@@ -81,34 +81,34 @@ pub fn on_sell(
     require!(current_price > 0, SkyeLadderError::ZeroPrice);
     require!(tokens_to_sell > 0, SkyeLadderError::ZeroTokens);
 
-    // Build index + multiplier pairs, sorted by multiplier descending
-    let mut indexed: Vec<(usize, u128)> = wallet
-        .positions
-        .iter()
-        .enumerate()
-        .map(|(i, pos)| {
-            let mult = if pos.entry_price == 0 {
-                0u128
-            } else {
-                (current_price as u128) * 10_000 / (pos.entry_price as u128)
-            };
-            (i, mult)
-        })
-        .collect();
+    // Build index + multiplier pairs, sorted by multiplier descending.
+    // Stack-allocated: MAX_POSITIONS is 10, so no heap allocation needed.
+    let mut indexed_buf = [(0usize, 0u128); MAX_POSITIONS];
+    let pos_count = wallet.positions.len().min(MAX_POSITIONS);
+    for (i, pos) in wallet.positions.iter().enumerate().take(pos_count) {
+        let mult = if pos.entry_price == 0 {
+            0u128
+        } else {
+            (current_price as u128) * 10_000 / (pos.entry_price as u128)
+        };
+        indexed_buf[i] = (i, mult);
+    }
+    let indexed = &mut indexed_buf[..pos_count];
 
     // Sort by multiplier descending (sell most-unlocked first)
     indexed.sort_by(|a, b| b.1.cmp(&a.1));
 
     // ── Phase 1: Compute deductions on clones (no mutation) ──
-    let mut deductions: Vec<(usize, u64, u32)> = Vec::new(); // (index, tokens_to_take, new_bps)
+    let mut deductions_buf = [(0usize, 0u64, 0u32); MAX_POSITIONS];
+    let mut deduction_count = 0usize;
     let mut remaining = tokens_to_sell;
 
-    for (idx, _mult) in &indexed {
+    for &(idx, _mult) in indexed.iter() {
         if remaining == 0 {
             break;
         }
 
-        let pos = &wallet.positions[*idx];
+        let pos = &wallet.positions[idx];
         if pos.is_empty() {
             continue;
         }
@@ -119,7 +119,8 @@ pub fn on_sell(
 
         let take = sellable.min(remaining);
         if take > 0 {
-            deductions.push((*idx, take, bps));
+            deductions_buf[deduction_count] = (idx, take, bps);
+            deduction_count += 1;
             remaining -= take;
         }
     }
@@ -128,12 +129,12 @@ pub fn on_sell(
     require!(remaining == 0, SkyeLadderError::SellExceedsUnlocked);
 
     // ── Phase 2: Apply deductions (we know the sell is valid) ──
-    for (idx, take, bps) in &deductions {
-        let pos = &mut wallet.positions[*idx];
-        pos.unlocked_bps = *bps;
+    for &(idx, take, bps) in &deductions_buf[..deduction_count] {
+        let pos = &mut wallet.positions[idx];
+        pos.unlocked_bps = bps;
         pos.token_balance = pos
             .token_balance
-            .checked_sub(*take)
+            .checked_sub(take)
             .ok_or(SkyeLadderError::MathOverflow)?;
 
         // Mark sold_before_5x if multiplier < 5x

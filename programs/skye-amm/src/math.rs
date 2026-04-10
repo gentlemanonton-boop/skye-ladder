@@ -34,7 +34,10 @@ pub fn compute_swap_output(
     require!(amount_out > 0, SkyeAmmError::InsufficientLiquidity);
     require!(amount_out <= reserve_out as u128, SkyeAmmError::InsufficientLiquidity);
 
-    Ok((amount_out as u64, fee as u64))
+    Ok((
+        u64::try_from(amount_out).map_err(|_| error!(SkyeAmmError::MathOverflow))?,
+        u64::try_from(fee).map_err(|_| error!(SkyeAmmError::MathOverflow))?,
+    ))
 }
 
 /// Compute initial LP tokens: sqrt(skye * wsol)
@@ -63,7 +66,7 @@ pub fn compute_proportional_lp(
         .checked_mul(total_lp as u128)
         .ok_or(SkyeAmmError::MathOverflow)?
         / (wsol_reserve as u128);
-    Ok(lp_from_skye.min(lp_from_wsol) as u64)
+    Ok(u64::try_from(lp_from_skye.min(lp_from_wsol)).map_err(|_| error!(SkyeAmmError::MathOverflow))?)
 }
 
 /// Compute withdrawal amounts from LP burn.
@@ -85,7 +88,10 @@ pub fn compute_withdraw(
         .ok_or(SkyeAmmError::MathOverflow)?
         / (total_lp as u128);
 
-    Ok((skye_out as u64, wsol_out as u64))
+    Ok((
+        u64::try_from(skye_out).map_err(|_| error!(SkyeAmmError::MathOverflow))?,
+        u64::try_from(wsol_out).map_err(|_| error!(SkyeAmmError::MathOverflow))?,
+    ))
 }
 
 /// Split a swap fee 50/50 between the protocol team and the LP pool.

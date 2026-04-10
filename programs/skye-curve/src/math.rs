@@ -41,7 +41,10 @@ pub fn compute_buy(
 
     require!(tokens_out > 0, SkyeCurveError::InsufficientLiquidity);
 
-    Ok((tokens_out as u64, fee as u64))
+    Ok((
+        u64::try_from(tokens_out).map_err(|_| error!(SkyeCurveError::MathOverflow))?,
+        u64::try_from(fee).map_err(|_| error!(SkyeCurveError::MathOverflow))?,
+    ))
 }
 
 pub fn compute_sell(
@@ -68,7 +71,10 @@ pub fn compute_sell(
 
     require!(sol_out > 0, SkyeCurveError::InsufficientLiquidity);
 
-    Ok((sol_out as u64, fee as u64))
+    Ok((
+        u64::try_from(sol_out).map_err(|_| error!(SkyeCurveError::MathOverflow))?,
+        u64::try_from(fee).map_err(|_| error!(SkyeCurveError::MathOverflow))?,
+    ))
 }
 
 /// Apply the 50/50 treasury/pool split to a sell output.

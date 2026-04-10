@@ -1859,9 +1859,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "solana-program",
- "spl-tlv-account-resolution",
  "spl-token-2022",
- "spl-transfer-hook-interface",
 ]
 
 [[package]]
