@@ -64,7 +64,8 @@ const DEAD_MINTS = new Set([
   "HTPUwZ7RMsFHdderwwW3DzgYQhDnSPnZQ3mXhsnkNN5R", // test launch (no hook config)
   "G6gXhANJNjPbdoa4EnTn12VZjWJQYa79Nbi3UFCoEGZC", // failed launch (no pool)
   "2xdcq2KYoRT6e5Z3qRDeCucJXPF5u5988VpJJQ26oDsX", // failed launch (no pool)
-  "DXSnfYZ4xkMiziCb8gcQKC8ZAtt7y7DFYMCRJrV18a3G", // failed launch (no pool, ran old code)
+  "DXSnfYZ4xkMiziCb8gcQKC8ZAtt7y7DFYMCRJrV18a3G", // failed launch (no pool)
+  "7phvGL1U9T1Xn8df426fTT81JdfmNNmATrWyB76G18Bj", // failed launch (no pool)
 ]);
 
 const REFRESH_TTL_MS = 30_000;       // in-memory token cache: background refresh after this

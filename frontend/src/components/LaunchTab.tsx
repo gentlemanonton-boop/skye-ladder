@@ -36,74 +36,42 @@ const POOL_FEE_BPS = 100; // 1% — matches the curve's fee_bps for continuity
 // sha256("global:<name>")[0..8]:
 const INIT_POOL_DISC      = new Uint8Array([95,180,10,172,84,174,232,40]);
 
-const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+/** Build Metaplex CreateV1 instruction via UMI. Returns null if it fails. */
+async function buildMetadataIxs(
+  mintAddress: string,
+  walletAdapter: any,
+  tokenName: string,
+  tokenSymbol: string,
+): Promise<TransactionInstruction[] | null> {
+  try {
+    const { createUmi } = await import("@metaplex-foundation/umi-bundle-defaults");
+    const { mplTokenMetadata, createV1, TokenStandard } = await import("@metaplex-foundation/mpl-token-metadata");
+    const { walletAdapterIdentity } = await import("@metaplex-foundation/umi-signer-wallet-adapters");
+    const { publicKey: umiPk, transactionBuilder } = await import("@metaplex-foundation/umi");
+    const { toWeb3JsInstruction } = await import("@metaplex-foundation/umi-web3js-adapters");
 
-function getMetadataPDA(mint: PublicKey): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-    TOKEN_METADATA_PROGRAM_ID,
-  )[0];
-}
+    const SPL_TOKEN_2022_ID = umiPk("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 
-/** Build a CreateMetadataAccountV3 instruction for a Token-2022 mint.
- *  No Arweave upload — just name+symbol on-chain so Phantom shows the token correctly. */
-function buildCreateMetadataIx(
-  mint: PublicKey,
-  authority: PublicKey,
-  name: string,
-  symbol: string,
-): TransactionInstruction {
-  const metadataPDA = getMetadataPDA(mint);
+    const umi = createUmi(RPC_URL)
+      .use(mplTokenMetadata())
+      .use(walletAdapterIdentity(walletAdapter));
 
-  // Borsh-serialize the CreateMetadataAccountV3 instruction data.
-  // Discriminator: 33 (CreateMetadataAccountV3)
-  // Args: CreateMetadataAccountArgsV3 { data: DataV2, is_mutable: bool, collection_details: Option }
-  // DataV2: { name, symbol, uri, seller_fee_basis_points, creators: Option, collection: Option, uses: Option }
-  const nameBytes = Buffer.from(name);
-  const symbolBytes = Buffer.from(symbol);
-  const uriBytes = Buffer.from(""); // empty — backfill later
+    const builder = createV1(umi, {
+      mint: umiPk(mintAddress),
+      name: tokenName,
+      symbol: tokenSymbol,
+      uri: "",
+      sellerFeeBasisPoints: { basisPoints: 0n, identifier: "%" as const, decimals: 2 },
+      tokenStandard: TokenStandard.Fungible,
+      splTokenProgram: SPL_TOKEN_2022_ID,
+    });
 
-  // Calculate buffer size
-  const size = 1 + // discriminator (33)
-    4 + nameBytes.length +   // name (borsh string)
-    4 + symbolBytes.length + // symbol (borsh string)
-    4 + uriBytes.length +    // uri (borsh string)
-    2 +   // seller_fee_basis_points (u16)
-    1 +   // creators: Option<Vec> = None (0)
-    1 +   // collection: Option = None (0)
-    1 +   // uses: Option = None (0)
-    1 +   // is_mutable (bool)
-    1;    // collection_details: Option = None (0)
-
-  const data = Buffer.alloc(size);
-  let offset = 0;
-  data.writeUInt8(33, offset); offset += 1; // CreateMetadataAccountV3
-  data.writeUInt32LE(nameBytes.length, offset); offset += 4;
-  nameBytes.copy(data, offset); offset += nameBytes.length;
-  data.writeUInt32LE(symbolBytes.length, offset); offset += 4;
-  symbolBytes.copy(data, offset); offset += symbolBytes.length;
-  data.writeUInt32LE(uriBytes.length, offset); offset += 4;
-  uriBytes.copy(data, offset); offset += uriBytes.length;
-  data.writeUInt16LE(0, offset); offset += 2; // seller_fee_basis_points = 0
-  data.writeUInt8(0, offset); offset += 1; // creators = None
-  data.writeUInt8(0, offset); offset += 1; // collection = None
-  data.writeUInt8(0, offset); offset += 1; // uses = None
-  data.writeUInt8(1, offset); offset += 1; // is_mutable = true
-  data.writeUInt8(0, offset); offset += 1; // collection_details = None
-
-  return new TransactionInstruction({
-    programId: TOKEN_METADATA_PROGRAM_ID,
-    data,
-    keys: [
-      { pubkey: metadataPDA, isSigner: false, isWritable: true },
-      { pubkey: mint, isSigner: false, isWritable: false },
-      { pubkey: authority, isSigner: true, isWritable: false },  // mint authority
-      { pubkey: authority, isSigner: true, isWritable: true },   // payer
-      { pubkey: authority, isSigner: true, isWritable: false },  // update authority
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false }, // spl_token_program (required for Token-2022 mints)
-    ],
-  });
+    const ixs = builder.getInstructions();
+    return ixs.map(ix => toWeb3JsInstruction(ix));
+  } catch (e) {
+    console.error("Failed to build metadata instructions:", e);
+    return null;
+  }
 }
 
 export function LaunchTab() {
@@ -327,12 +295,16 @@ export function LaunchTab() {
           ],
         });
 
-        // Metaplex metadata goes in TX2 (not TX1) to avoid hitting the
-        // 1232-byte transaction size limit. The mint already exists after TX1.
-        const metadataIx = buildCreateMetadataIx(mint, publicKey, name, symbol);
+        const tx2 = new Transaction();
 
-        const tx2 = new Transaction().add(
-          metadataIx,
+        // Metaplex metadata — built via UMI for correct Token-2022 support.
+        // Non-fatal: if it fails, pool setup still proceeds.
+        if (wallet.wallet?.adapter) {
+          const metaIxs = await buildMetadataIxs(mint.toBase58(), wallet.wallet.adapter, name, symbol);
+          if (metaIxs) metaIxs.forEach(ix => tx2.add(ix));
+        }
+
+        tx2.add(
           SystemProgram.createAccount({
             fromPubkey:       publicKey,
             newAccountPubkey: lpMintKeypair.publicKey,
