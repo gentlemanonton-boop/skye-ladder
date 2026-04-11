@@ -64,7 +64,6 @@ const DEAD_MINTS = new Set([
   "HTPUwZ7RMsFHdderwwW3DzgYQhDnSPnZQ3mXhsnkNN5R", // test launch (no hook config)
   "G6gXhANJNjPbdoa4EnTn12VZjWJQYa79Nbi3UFCoEGZC", // failed launch (no pool)
   "2xdcq2KYoRT6e5Z3qRDeCucJXPF5u5988VpJJQ26oDsX", // failed launch (no pool)
-  "HXPTonoKUnnSk8rM6wbL2LEh58KXLeHUAdkGNPU5fmLk", // failed launch (no pool)
   "DXSnfYZ4xkMiziCb8gcQKC8ZAtt7y7DFYMCRJrV18a3G", // failed launch (no pool, ran old code)
 ]);
 
