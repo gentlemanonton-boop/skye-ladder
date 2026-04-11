@@ -66,6 +66,8 @@ const DEAD_MINTS = new Set([
   "2xdcq2KYoRT6e5Z3qRDeCucJXPF5u5988VpJJQ26oDsX", // failed launch (no pool)
   "DXSnfYZ4xkMiziCb8gcQKC8ZAtt7y7DFYMCRJrV18a3G", // failed launch (no pool)
   "7phvGL1U9T1Xn8df426fTT81JdfmNNmATrWyB76G18Bj", // failed launch (no pool)
+  "EbjHFdcf3XKpfP8Vqwq3fkphMAnwfXx44WyftFnN7jSL", // looksmaxxing test (no image)
+  "6VS9dRiXtK93ic2WucNbfovY2GeyUxtPhvnkvMF8Czcd", // looksmaxxing test (no image)
 ]);
 
 const REFRESH_TTL_MS = 30_000;       // in-memory token cache: background refresh after this
