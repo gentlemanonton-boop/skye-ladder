@@ -16,7 +16,7 @@ import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import { TransactionInstruction } from "@solana/web3.js";
 import ladderIdl from "../idl/skye_ladder.json";
 import { storeToken } from "../lib/launchStore";
-import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS } from "../constants";
+import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS, RPC_URL } from "../constants";
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
 const LAUNCH_DISC = new Uint8Array([10,128,86,171,3,137,161,244]);
@@ -37,6 +37,76 @@ const POOL_FEE_BPS = 100; // 1% — matches the curve's fee_bps for continuity
 const INIT_POOL_DISC      = new Uint8Array([95,180,10,172,84,174,232,40]);
 const SET_FEE_CONFIG_DISC = new Uint8Array([221,222,52,206,114,198,64,91]);
 const CREATE_WR_DISC      = new Uint8Array([197,118,207,205,173,88,237,254]);
+
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+function getMetadataPDA(mint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    TOKEN_METADATA_PROGRAM_ID,
+  )[0];
+}
+
+/** Build a CreateMetadataAccountV3 instruction for a Token-2022 mint.
+ *  No Arweave upload — just name+symbol on-chain so Phantom shows the token correctly. */
+function buildCreateMetadataIx(
+  mint: PublicKey,
+  authority: PublicKey,
+  name: string,
+  symbol: string,
+): TransactionInstruction {
+  const metadataPDA = getMetadataPDA(mint);
+
+  // Borsh-serialize the CreateMetadataAccountV3 instruction data.
+  // Discriminator: 33 (CreateMetadataAccountV3)
+  // Args: CreateMetadataAccountArgsV3 { data: DataV2, is_mutable: bool, collection_details: Option }
+  // DataV2: { name, symbol, uri, seller_fee_basis_points, creators: Option, collection: Option, uses: Option }
+  const nameBytes = Buffer.from(name);
+  const symbolBytes = Buffer.from(symbol);
+  const uriBytes = Buffer.from(""); // empty — backfill later
+
+  // Calculate buffer size
+  const size = 1 + // discriminator (33)
+    4 + nameBytes.length +   // name (borsh string)
+    4 + symbolBytes.length + // symbol (borsh string)
+    4 + uriBytes.length +    // uri (borsh string)
+    2 +   // seller_fee_basis_points (u16)
+    1 +   // creators: Option<Vec> = None (0)
+    1 +   // collection: Option = None (0)
+    1 +   // uses: Option = None (0)
+    1 +   // is_mutable (bool)
+    1;    // collection_details: Option = None (0)
+
+  const data = Buffer.alloc(size);
+  let offset = 0;
+  data.writeUInt8(33, offset); offset += 1; // CreateMetadataAccountV3
+  data.writeUInt32LE(nameBytes.length, offset); offset += 4;
+  nameBytes.copy(data, offset); offset += nameBytes.length;
+  data.writeUInt32LE(symbolBytes.length, offset); offset += 4;
+  symbolBytes.copy(data, offset); offset += symbolBytes.length;
+  data.writeUInt32LE(uriBytes.length, offset); offset += 4;
+  uriBytes.copy(data, offset); offset += uriBytes.length;
+  data.writeUInt16LE(0, offset); offset += 2; // seller_fee_basis_points = 0
+  data.writeUInt8(0, offset); offset += 1; // creators = None
+  data.writeUInt8(0, offset); offset += 1; // collection = None
+  data.writeUInt8(0, offset); offset += 1; // uses = None
+  data.writeUInt8(1, offset); offset += 1; // is_mutable = true
+  data.writeUInt8(0, offset); offset += 1; // collection_details = None
+
+  return new TransactionInstruction({
+    programId: TOKEN_METADATA_PROGRAM_ID,
+    data,
+    keys: [
+      { pubkey: metadataPDA, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: authority, isSigner: true, isWritable: false },  // mint authority
+      { pubkey: authority, isSigner: true, isWritable: true },   // payer
+      { pubkey: authority, isSigner: true, isWritable: false },  // update authority
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false }, // spl_token_program (required for Token-2022 mints)
+    ],
+  });
+}
 
 export function LaunchTab() {
   const wallet = useWallet();
@@ -173,6 +243,11 @@ export function LaunchTab() {
       const wrIx = await (ladderProgram.methods as any).createWalletRecord()
         .accounts({ payer: publicKey, wallet: curvePDA, mint, walletRecord: curveWR, systemProgram: SystemProgram.programId }).instruction();
 
+      // Create on-chain Metaplex metadata so wallets (Phantom, etc.) show
+      // the token name and symbol. No Arweave upload — uri is empty and can
+      // be backfilled later via scripts/backfill-metadata.ts.
+      const metadataIx = buildCreateMetadataIx(mint, publicKey, name, symbol);
+
       const tx1 = new Transaction().add(
         SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: TREASURY_WALLET, lamports: LAUNCH_FEE_LAMPORTS }),
         SystemProgram.createAccount({
@@ -181,6 +256,7 @@ export function LaunchTab() {
         }),
         createInitializeTransferHookInstruction(mint, publicKey, SKYE_LADDER_ID, TOKEN_2022_PROGRAM_ID),
         createInitializeMintInstruction(mint, DECIMALS, publicKey, null, TOKEN_2022_PROGRAM_ID),
+        metadataIx,
         initIx,
         createAssociatedTokenAccountInstruction(publicKey, tokenReserve, curvePDA, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
         createAssociatedTokenAccountInstruction(publicKey, solReserve, curvePDA, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
