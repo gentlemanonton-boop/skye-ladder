@@ -207,14 +207,11 @@ async function doFetch(connection: Connection): Promise<DiscoveredTokenBase[]> {
       const meta = await fetchMetadataForMints(connection, results.map(r => r.mint));
       for (const t of results) {
         const m = meta.get(t.mint);
-        if (!m || !m.image) continue;
-        // Prefer launchStore values if they exist (they were set by the
-        // launching user). Otherwise use the on-chain metadata so that
-        // visitors who never launched the token still see the image.
-        if (!t.image) t.image = m.image;
-        if (!t.name || t.name === t.mint.slice(0, 6) + "...") t.name = m.name || t.name;
-        if (!t.symbol || t.symbol === "???") t.symbol = m.symbol || t.symbol;
-        if (!t.description) t.description = m.description;
+        if (!m) continue;
+        if (m.image && !t.image) t.image = m.image;
+        if (m.name && (!t.name || t.name === t.mint.slice(0, 6) + "...")) t.name = m.name;
+        if (m.symbol && (!t.symbol || t.symbol === "???")) t.symbol = m.symbol;
+        if (m.description && !t.description) t.description = m.description;
       }
     } catch { /* enrichment is best-effort */ }
   }

@@ -87,7 +87,6 @@ function parseMetadataAccount(
     const symbol = readString();
     const uri = readString();
 
-    if (!uri) return null;
     return { name, symbol, uri };
   } catch {
     return null;
@@ -127,7 +126,7 @@ export async function fetchMetadataForMints(
 
   const jsonResults = await Promise.allSettled(
     parsed.map(p =>
-      p
+      p && p.uri
         ? fetch(p.uri).then(r => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.json();
@@ -161,8 +160,8 @@ export async function fetchMetadataForMints(
       mint: p.mint, name, symbol, image, description,
     };
 
-    // Only cache once we have an image — failed/empty fetches will retry next time
-    if (image) {
+    // Cache if we have at least a name (on-chain metadata exists)
+    if (name) {
       memCache.set(p.mint, meta);
       diskCache[p.mint] = meta;
       cacheChanged = true;

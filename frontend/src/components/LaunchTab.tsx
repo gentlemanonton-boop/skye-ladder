@@ -401,70 +401,70 @@ export function LaunchTab() {
       // ══════════════════════════════════════════════════
       if (initialBuySolNum > 0) {
         setStep(3);
-        // The launching wallet has no token ATA yet — TX 1 minted the supply
-        // straight to the curve, so we create the creator's ATA fresh here.
-        const creatorATA = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const treasuryWsol = getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-        const [buyerWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
+        try {
+          const creatorATA = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+          const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+          const [buyerWR] = PublicKey.findProgramAddressSync([Buffer.from("wallet"), publicKey.toBuffer(), mint.toBuffer()], SKYE_LADDER_ID);
 
-        const wsolInfo = await connection.getAccountInfo(userWsol);
-        const buyerWRInfo = await connection.getAccountInfo(buyerWR);
+          const [wsolInfo, buyerWRInfo] = await Promise.all([
+            connection.getAccountInfo(userWsol),
+            connection.getAccountInfo(buyerWR),
+          ]);
 
-        const buyIxs: TransactionInstruction[] = [];
-        // The creator never had a token ATA in the new flow (supply went straight
-        // to the curve), so we always create one fresh here.
-        buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, creatorATA, publicKey, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
-        if (!wsolInfo) buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
-        if (!buyerWRInfo) {
-          buyIxs.push(await (ladderProgram.methods as any).createWalletRecord()
-            .accounts({ payer: publicKey, wallet: publicKey, mint, walletRecord: buyerWR, systemProgram: SystemProgram.programId }).instruction());
+          const buyIxs: TransactionInstruction[] = [];
+          buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, creatorATA, publicKey, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+          if (!wsolInfo) buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+          if (!buyerWRInfo) {
+            buyIxs.push(await (ladderProgram.methods as any).createWalletRecord()
+              .accounts({ payer: publicKey, wallet: publicKey, mint, walletRecord: buyerWR, systemProgram: SystemProgram.programId }).instruction());
+          }
+
+          const lamportsIn = Math.floor(initialBuySolNum * LAMPORTS_PER_SOL);
+          buyIxs.push(
+            SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: userWsol, lamports: lamportsIn }),
+            createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
+          );
+
+          const swapData = Buffer.alloc(8 + 8 + 8 + 1);
+          swapData.set(SWAP_DISC, 0);
+          swapData.writeBigUInt64LE(BigInt(lamportsIn), 8);
+          swapData.writeBigUInt64LE(0n, 16);
+          swapData[24] = 1;
+
+          buyIxs.push(new TransactionInstruction({
+            keys: [
+              { pubkey: publicKey, isSigner: true, isWritable: true },
+              { pubkey: curvePDA, isSigner: false, isWritable: true },
+              { pubkey: mint, isSigner: false, isWritable: false },
+              { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+              { pubkey: creatorATA, isSigner: false, isWritable: true },
+              { pubkey: userWsol, isSigner: false, isWritable: true },
+              { pubkey: tokenReserve, isSigner: false, isWritable: true },
+              { pubkey: solReserve, isSigner: false, isWritable: true },
+              { pubkey: getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID), isSigner: false, isWritable: true },
+              { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+              { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+              { pubkey: configPDA, isSigner: false, isWritable: false },
+              { pubkey: curveWR, isSigner: false, isWritable: true },
+              { pubkey: buyerWR, isSigner: false, isWritable: true },
+              { pubkey: curvePDA, isSigner: false, isWritable: false },
+              { pubkey: SKYE_LADDER_ID, isSigner: false, isWritable: false },
+              { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
+            ],
+            programId: SKYE_CURVE_ID,
+            data: swapData,
+          }));
+
+          const tx3 = new Transaction().add(...buyIxs);
+          tx3.feePayer = publicKey;
+          tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+          const sig3 = await sendTransaction(tx3, connection);
+          await connection.confirmTransaction(sig3, "confirmed");
+        } catch (buyErr: any) {
+          console.error("Initial buy failed (non-fatal):", buyErr);
+          // Token is already launched — the initial buy is optional.
+          // Don't reset the UI or block the success screen.
         }
-
-        const lamportsIn = Math.floor(initialBuySolNum * LAMPORTS_PER_SOL);
-        buyIxs.push(
-          SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: userWsol, lamports: lamportsIn }),
-          createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
-        );
-
-        const swapData = Buffer.alloc(8 + 8 + 8 + 1);
-        swapData.set(SWAP_DISC, 0);
-        swapData.writeBigUInt64LE(BigInt(lamportsIn), 8);
-        swapData.writeBigUInt64LE(0n, 16);
-        swapData[24] = 1;
-
-        const senderWR = curveWR;
-        const receiverWR = buyerWR;
-
-        buyIxs.push(new TransactionInstruction({
-          keys: [
-            { pubkey: publicKey, isSigner: true, isWritable: true },
-            { pubkey: curvePDA, isSigner: false, isWritable: true },
-            { pubkey: mint, isSigner: false, isWritable: false },
-            { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
-            { pubkey: creatorATA, isSigner: false, isWritable: true },
-            { pubkey: userWsol, isSigner: false, isWritable: true },
-            { pubkey: tokenReserve, isSigner: false, isWritable: true },
-            { pubkey: solReserve, isSigner: false, isWritable: true },
-            { pubkey: getAssociatedTokenAddressSync(NATIVE_MINT, TREASURY_WALLET, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID), isSigner: false, isWritable: true },
-            { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-            { pubkey: configPDA, isSigner: false, isWritable: false },
-            { pubkey: senderWR, isSigner: false, isWritable: true },
-            { pubkey: receiverWR, isSigner: false, isWritable: true },
-            { pubkey: curvePDA, isSigner: false, isWritable: false },
-            { pubkey: SKYE_LADDER_ID, isSigner: false, isWritable: false },
-            { pubkey: extraMetasPDA, isSigner: false, isWritable: false },
-          ],
-          programId: SKYE_CURVE_ID,
-          data: swapData,
-        }));
-
-        const tx3 = new Transaction().add(...buyIxs);
-        tx3.feePayer = publicKey;
-        tx3.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-        const sig3 = await sendTransaction(tx3, connection);
-        await connection.confirmTransaction(sig3, "confirmed");
       }
 
       // Store token metadata locally
