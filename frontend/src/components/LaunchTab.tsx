@@ -58,6 +58,7 @@ export function LaunchTab() {
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ mint: string; curve: string } | null>(null);
+  const [metaStatus, setMetaStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -430,19 +431,6 @@ export function LaunchTab() {
       setStep(4);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
 
-      // Metadata upload runs in background AFTER launch is complete.
-      // The user already sees their token via localStorage cache. This
-      // handles the Arweave upload + Metaplex createV1 without blocking
-      // the launch flow. Can be retried via scripts/backfill-metadata.ts.
-      if (wallet.wallet?.adapter) {
-        uploadAndCreateMetadata({
-          wallet: wallet.wallet.adapter,
-          mint: mint.toBase58(),
-          name, symbol, description,
-          imageFile,
-        }).catch((metaErr) => console.error("Metadata upload failed (non-fatal):", metaErr));
-      }
-
     } catch (e: any) {
       setError(e.message || "Launch failed");
       console.error("Launch error:", e);
@@ -580,11 +568,38 @@ export function LaunchTab() {
         )}
 
         {result && (
-          <div className="bg-skye-500/10 border border-skye-500/20 rounded-xl p-4 space-y-2">
+          <div className="bg-skye-500/10 border border-skye-500/20 rounded-xl p-4 space-y-3">
             <p className="font-pixel text-[9px] text-skye-400">TOKEN LAUNCHED</p>
             <p className="text-[12px] text-ink-secondary">Mint: <span className="text-ink-primary break-all">{result.mint}</span></p>
             <a href={`https://solscan.io/token/${result.mint}`} target="_blank" rel="noopener noreferrer"
               className="text-[12px] text-skye-400 hover:underline font-semibold">View on Solscan</a>
+
+            {metaStatus === "idle" && wallet.wallet?.adapter && (
+              <button onClick={async () => {
+                setMetaStatus("uploading");
+                try {
+                  await uploadAndCreateMetadata({
+                    wallet: wallet.wallet!.adapter,
+                    mint: result.mint, name, symbol, description, imageFile,
+                  });
+                  setMetaStatus("done");
+                } catch (e: any) {
+                  console.error("Metadata upload failed:", e);
+                  setMetaStatus("error");
+                }
+              }}
+                className="w-full py-2.5 rounded-lg text-[12px] font-semibold bg-white/10 hover:bg-white/15 text-ink-secondary transition">
+                Upload Metadata to Arweave (3 approvals)
+              </button>
+            )}
+            {metaStatus === "uploading" && <p className="text-[11px] text-amber-400 text-center">Uploading metadata... approve each prompt in your wallet</p>}
+            {metaStatus === "done" && <p className="text-[11px] text-emerald-400 text-center">Metadata uploaded to Arweave</p>}
+            {metaStatus === "error" && (
+              <button onClick={() => setMetaStatus("idle")}
+                className="w-full py-2 rounded-lg text-[11px] font-semibold bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition">
+                Metadata upload failed — tap to retry
+              </button>
+            )}
           </div>
         )}
         {error && <p className="text-center text-[12px] text-rose-400 break-all">{error}</p>}
