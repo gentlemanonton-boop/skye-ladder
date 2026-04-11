@@ -282,7 +282,7 @@ export function WorldTab() {
 
                     {/* Socials — visible on hover */}
                     {(token.website || token.twitter || token.telegram || token.discord) && (
-                      <div className="hidden group-hover:flex items-center gap-2 mt-2 pt-2 border-t border-white/10">
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/10">
                         {token.website && (
                           <a href={token.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-white/40 hover:text-white/80 transition-colors">
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>

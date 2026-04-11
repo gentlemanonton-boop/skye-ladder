@@ -371,7 +371,7 @@ export function LaunchTab() {
       } catch (prestageErr: any) {
         console.error("Auto-prestage failed:", prestageErr);
         setError(
-          "Token launched but pool setup failed. Your token trades on the curve but cannot graduate to the AMM. Contact the team to fix this."
+          "Pool setup failed — you may have rejected the transaction. Your token is live on the curve. Retry by launching again with the same details."
         );
         // Don't proceed to initial buy — the user needs to see this warning.
         // The token exists on-chain and trades on the curve, but without the
@@ -461,6 +461,9 @@ export function LaunchTab() {
 
       setStep(4);
       setResult({ mint: mint.toBase58(), curve: curvePDA.toBase58() });
+      setName(""); setSymbol(""); setDescription(""); setWebsite(""); setTwitter("");
+      setTelegram(""); setDiscord(""); setImageFile(null); setImagePreview(null);
+      setInitialBuySol("");
 
     } catch (e: any) {
       setError(e.message || "Launch failed");
@@ -582,7 +585,7 @@ export function LaunchTab() {
               <span className="font-pixel text-[9px] text-skye-400">{stepLabels[step]}</span>
             </div>
             <div className="flex gap-1">
-              {[1,2].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
+              {[1,2,3].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
             </div>
             <p className="text-[11px] text-ink-faint">Approve in wallet</p>
           </div>
@@ -590,7 +593,7 @@ export function LaunchTab() {
 
         {/* Button */}
         {publicKey ? (!isLaunching ? (
-          <button onClick={handleLaunch} disabled={!name || !symbol}
+          <button onClick={handleLaunch} disabled={!name.trim() || !symbol.trim()}
             className="w-full py-4 rounded-xl bg-gradient-to-r from-skye-500 to-skye-600 hover:from-skye-600 hover:to-skye-700 text-white font-semibold text-[15px] transition-all active:scale-[0.98] disabled:opacity-40 min-h-[52px]">
             Create coin
           </button>
@@ -616,7 +619,7 @@ export function LaunchTab() {
         <div className="space-y-2">
           {[
             { s: "01", t: "Fill in token details, upload image, add socials", c: "text-skye-400" },
-            { s: "02", t: "Metadata + tokenomics uploaded to Arweave permanently", c: "text-lime-400" },
+            { s: "02", t: "Token image hosted, metadata stored on-chain", c: "text-lime-400" },
             { s: "03", t: "Token launches on bonding curve — price rises with buys", c: "text-emerald-400" },
             { s: "04", t: "Sell restrictions active from day one via Transfer Hook", c: "text-cyan-400" },
             { s: "05", t: "At 85 SOL, liquidity migrates to Skye AMM pool", c: "text-purple-400" },

@@ -376,7 +376,7 @@ export function DiscoverTab() {
             {/* Quick amount buttons */}
             <div className="flex gap-2">
               {quickAmounts.map(q => (
-                <button key={q} onClick={() => {
+                <button key={q} disabled={!isBuy && holding <= 0} onClick={() => {
                   if (isBuy) {
                     setAmount(q.toString());
                   } else {
@@ -385,7 +385,7 @@ export function DiscoverTab() {
                   }
                   setSwapResult(null);
                 }}
-                  className="flex-1 py-1.5 text-[11px] font-semibold bg-white/5 hover:bg-white/10 rounded-lg text-ink-secondary transition">
+                  className={`flex-1 py-1.5 text-[11px] font-semibold bg-white/5 rounded-lg text-ink-secondary transition ${!isBuy && holding <= 0 ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"}`}>
                   {isBuy ? `${q} SOL` : `${q}%`}
                 </button>
               ))}
