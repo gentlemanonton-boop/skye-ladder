@@ -62,6 +62,9 @@ const DEAD_MINTS = new Set([
   "652ZioC8L56aG51hoBLRsHsoqHnXPZU5FFseDS1EJkzK", // HODL (no on-chain metadata)
   "5o35mhPhmhbcvd6wJTzwTzrwCYyJNodCUwjecwN86VSn", // test launch (no hook config)
   "HTPUwZ7RMsFHdderwwW3DzgYQhDnSPnZQ3mXhsnkNN5R", // test launch (no hook config)
+  "G6gXhANJNjPbdoa4EnTn12VZjWJQYa79Nbi3UFCoEGZC", // failed launch (no pool)
+  "2xdcq2KYoRT6e5Z3qRDeCucJXPF5u5988VpJJQ26oDsX", // failed launch (no pool)
+  "HXPTonoKUnnSk8rM6wbL2LEh58KXLeHUAdkGNPU5fmLk", // failed launch (no pool)
 ]);
 
 const REFRESH_TTL_MS = 30_000;       // in-memory token cache: background refresh after this

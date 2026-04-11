@@ -35,7 +35,6 @@ const POOL_FEE_BPS = 100; // 1% — matches the curve's fee_bps for continuity
 // Anchor discriminators for the AMM instructions, computed from
 // sha256("global:<name>")[0..8]:
 const INIT_POOL_DISC      = new Uint8Array([95,180,10,172,84,174,232,40]);
-const CREATE_WR_DISC      = new Uint8Array([197,118,207,205,173,88,237,254]);
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
@@ -357,23 +356,6 @@ export function LaunchTab() {
             TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
           ),
           initPoolIx,
-          (() => {
-            const [poolWR] = PublicKey.findProgramAddressSync(
-              [Buffer.from("wallet"), poolPda.toBuffer(), mint.toBuffer()],
-              SKYE_LADDER_ID,
-            );
-            return new TransactionInstruction({
-              programId: SKYE_LADDER_ID,
-              data: Buffer.from(CREATE_WR_DISC),
-              keys: [
-                { pubkey: publicKey, isSigner: true, isWritable: true },
-                { pubkey: poolPda, isSigner: false, isWritable: false },
-                { pubkey: mint, isSigner: false, isWritable: false },
-                { pubkey: poolWR, isSigner: false, isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-              ],
-            });
-          })(),
           createAssociatedTokenAccountInstruction(
             publicKey, incineratorLpAta, INCINERATOR, lpMintKeypair.publicKey,
             TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
