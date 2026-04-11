@@ -16,7 +16,6 @@ import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import { TransactionInstruction } from "@solana/web3.js";
 import ladderIdl from "../idl/skye_ladder.json";
 import { storeToken } from "../lib/launchStore";
-import { uploadAndCreateMetadata } from "../lib/metadataService";
 import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS } from "../constants";
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
@@ -58,7 +57,6 @@ export function LaunchTab() {
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ mint: string; curve: string } | null>(null);
-  const [metaStatus, setMetaStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -574,32 +572,6 @@ export function LaunchTab() {
             <a href={`https://solscan.io/token/${result.mint}`} target="_blank" rel="noopener noreferrer"
               className="text-[12px] text-skye-400 hover:underline font-semibold">View on Solscan</a>
 
-            {metaStatus === "idle" && wallet.wallet?.adapter && (
-              <button onClick={async () => {
-                setMetaStatus("uploading");
-                try {
-                  await uploadAndCreateMetadata({
-                    wallet: wallet.wallet!.adapter,
-                    mint: result.mint, name, symbol, description, imageFile,
-                  });
-                  setMetaStatus("done");
-                } catch (e: any) {
-                  console.error("Metadata upload failed:", e);
-                  setMetaStatus("error");
-                }
-              }}
-                className="w-full py-2.5 rounded-lg text-[12px] font-semibold bg-white/10 hover:bg-white/15 text-ink-secondary transition">
-                Upload Metadata to Arweave (3 approvals)
-              </button>
-            )}
-            {metaStatus === "uploading" && <p className="text-[11px] text-amber-400 text-center">Uploading metadata... approve each prompt in your wallet</p>}
-            {metaStatus === "done" && <p className="text-[11px] text-emerald-400 text-center">Metadata uploaded to Arweave</p>}
-            {metaStatus === "error" && (
-              <button onClick={() => setMetaStatus("idle")}
-                className="w-full py-2 rounded-lg text-[11px] font-semibold bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition">
-                Metadata upload failed — tap to retry
-              </button>
-            )}
           </div>
         )}
         {error && <p className="text-center text-[12px] text-rose-400 break-all">{error}</p>}
