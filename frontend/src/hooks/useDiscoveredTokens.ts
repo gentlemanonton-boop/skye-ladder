@@ -69,7 +69,6 @@ const DEAD_MINTS = new Set([
 ]);
 
 const REFRESH_TTL_MS = 30_000;       // in-memory token cache: background refresh after this
-const SIG_LIMIT = 15;                // signatures to walk on a cold mint cache (was 50)
 const MINT_CACHE_KEY = "skye_discovered_mints_v1";
 
 // ── Module-level cache + subscriber bus ─────────────────────────────────
@@ -107,23 +106,17 @@ function saveMintCache(mints: string[]) {
   try { localStorage.setItem(MINT_CACHE_KEY, JSON.stringify(mints)); } catch {}
 }
 
-// Walk a small window of recent curve program signatures, parse the launch
-// logs, return any new mints. This is the slow part — we only do it when
-// the persistent cache is empty, or in the background to refresh it.
+// Enumerate ALL curve accounts via getProgramAccounts. Filters by exact
+// account size (284 bytes) to skip LaunchpadConfig and other non-curve
+// accounts. Extracts the mint pubkey from each curve's data.
 async function discoverNewMints(connection: Connection): Promise<string[]> {
-  const sigs = await connection.getSignaturesForAddress(SKYE_CURVE_ID, { limit: SIG_LIMIT });
-  const txResults = await Promise.allSettled(
-    sigs.map(s => connection.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 }))
-  );
-  const found: string[] = [];
-  for (const result of txResults) {
-    if (result.status !== "fulfilled" || !result.value?.meta?.logMessages) continue;
-    const launchedLog = result.value.meta.logMessages.find(l => l.includes("Token launched:"));
-    if (!launchedLog) continue;
-    const m = launchedLog.match(/mint=([A-Za-z0-9]+)/);
-    if (m && !DEAD_MINTS.has(m[1])) found.push(m[1]);
-  }
-  return found;
+  const accounts = await connection.getProgramAccounts(SKYE_CURVE_ID, {
+    filters: [{ dataSize: 284 }],
+    dataSlice: { offset: 40, length: 32 }, // just the mint field
+  });
+  return accounts
+    .map(a => new PublicKey(a.account.data).toBase58())
+    .filter(m => !DEAD_MINTS.has(m));
 }
 
 async function doFetch(connection: Connection): Promise<DiscoveredTokenBase[]> {
