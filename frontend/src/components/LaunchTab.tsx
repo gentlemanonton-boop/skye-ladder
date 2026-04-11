@@ -242,11 +242,6 @@ export function LaunchTab() {
       const wrIx = await (ladderProgram.methods as any).createWalletRecord()
         .accounts({ payer: publicKey, wallet: curvePDA, mint, walletRecord: curveWR, systemProgram: SystemProgram.programId }).instruction();
 
-      // Create on-chain Metaplex metadata so wallets (Phantom, etc.) show
-      // the token name and symbol. No Arweave upload — uri is empty and can
-      // be backfilled later via scripts/backfill-metadata.ts.
-      const metadataIx = buildCreateMetadataIx(mint, publicKey, name, symbol);
-
       const tx1 = new Transaction().add(
         SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: TREASURY_WALLET, lamports: LAUNCH_FEE_LAMPORTS }),
         SystemProgram.createAccount({
@@ -255,7 +250,6 @@ export function LaunchTab() {
         }),
         createInitializeTransferHookInstruction(mint, publicKey, SKYE_LADDER_ID, TOKEN_2022_PROGRAM_ID),
         createInitializeMintInstruction(mint, DECIMALS, publicKey, null, TOKEN_2022_PROGRAM_ID),
-        metadataIx,
         initIx,
         createAssociatedTokenAccountInstruction(publicKey, tokenReserve, curvePDA, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
         createAssociatedTokenAccountInstruction(publicKey, solReserve, curvePDA, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
@@ -334,11 +328,12 @@ export function LaunchTab() {
           ],
         });
 
-        // set_fee_config is NOT called here — pool.authority is the platform
-        // admin (hardcoded in the program), not the launcher. The graduation
-        // watcher calls set_fee_config with the admin key as part of the
-        // post-graduation switchover.
+        // Metaplex metadata goes in TX2 (not TX1) to avoid hitting the
+        // 1232-byte transaction size limit. The mint already exists after TX1.
+        const metadataIx = buildCreateMetadataIx(mint, publicKey, name, symbol);
+
         const tx2 = new Transaction().add(
+          metadataIx,
           SystemProgram.createAccount({
             fromPubkey:       publicKey,
             newAccountPubkey: lpMintKeypair.publicKey,
