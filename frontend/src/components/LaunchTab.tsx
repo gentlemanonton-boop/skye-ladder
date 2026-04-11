@@ -42,6 +42,7 @@ async function buildMetadataIxs(
   walletAdapter: any,
   tokenName: string,
   tokenSymbol: string,
+  uri: string = "",
 ): Promise<TransactionInstruction[] | null> {
   try {
     const { createUmi } = await import("@metaplex-foundation/umi-bundle-defaults");
@@ -60,7 +61,7 @@ async function buildMetadataIxs(
       mint: umiPk(mintAddress),
       name: tokenName,
       symbol: tokenSymbol,
-      uri: "",
+      uri,
       sellerFeeBasisPoints: { basisPoints: 0n, identifier: "%" as const, decimals: 2 },
       tokenStandard: TokenStandard.Fungible,
       splTokenProgram: SPL_TOKEN_2022_ID,
@@ -297,10 +298,39 @@ export function LaunchTab() {
 
         const tx2 = new Transaction();
 
-        // Metaplex metadata — built via UMI for correct Token-2022 support.
-        // Non-fatal: if it fails, pool setup still proceeds.
+        // Upload image + metadata to Vercel Blob via API (no wallet signature).
+        // This makes images visible cross-device immediately.
+        let metadataUri = "";
+        try {
+          let imageUrl = "";
+          if (imageDataUri) {
+            const imgRes = await fetch("/api/token-image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mint: mint.toBase58(), image: imageDataUri }),
+            });
+            if (imgRes.ok) {
+              const imgData = await imgRes.json();
+              imageUrl = imgData.url;
+            }
+          }
+          const metaRes = await fetch("/api/token-metadata", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mint: mint.toBase58(), name, symbol, description, imageUrl }),
+          });
+          if (metaRes.ok) {
+            const metaData = await metaRes.json();
+            metadataUri = metaData.url;
+          }
+        } catch (e) {
+          console.error("Image/metadata upload failed (non-fatal):", e);
+        }
+
+        // Metaplex on-chain metadata — built via UMI for correct Token-2022 support.
+        // Uses the metadata URI from Vercel Blob if available, empty string otherwise.
         if (wallet.wallet?.adapter) {
-          const metaIxs = await buildMetadataIxs(mint.toBase58(), wallet.wallet.adapter, name, symbol);
+          const metaIxs = await buildMetadataIxs(mint.toBase58(), wallet.wallet.adapter, name, symbol, metadataUri);
           if (metaIxs) metaIxs.forEach(ix => tx2.add(ix));
         }
 
