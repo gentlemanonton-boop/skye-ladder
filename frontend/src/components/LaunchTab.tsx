@@ -35,7 +35,6 @@ const POOL_FEE_BPS = 100; // 1% — matches the curve's fee_bps for continuity
 // Anchor discriminators for the AMM instructions, computed from
 // sha256("global:<name>")[0..8]:
 const INIT_POOL_DISC      = new Uint8Array([95,180,10,172,84,174,232,40]);
-const SET_FEE_CONFIG_DISC = new Uint8Array([221,222,52,206,114,198,64,91]);
 const CREATE_WR_DISC      = new Uint8Array([197,118,207,205,173,88,237,254]);
 
 const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
@@ -335,23 +334,11 @@ export function LaunchTab() {
           ],
         });
 
-        // set_fee_config(team_wallet: Pubkey) — args: 32 bytes
-        const setFeeData = Buffer.alloc(8 + 32);
-        setFeeData.set(SET_FEE_CONFIG_DISC, 0);
-        treasuryWsolAta.toBuffer().copy(setFeeData, 8);
-
-        const setFeeIx = new TransactionInstruction({
-          programId: SKYE_AMM_ID,
-          data: setFeeData,
-          keys: [
-            { pubkey: publicKey,               isSigner: true,  isWritable: true  },
-            { pubkey: poolPda,                 isSigner: false, isWritable: true  },
-            { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          ],
-        });
-
+        // set_fee_config is NOT called here — pool.authority is the platform
+        // admin (hardcoded in the program), not the launcher. The graduation
+        // watcher calls set_fee_config with the admin key as part of the
+        // post-graduation switchover.
         const tx2 = new Transaction().add(
-          // Create the LP mint account (rent-exempt, owned by lp_authority PDA)
           SystemProgram.createAccount({
             fromPubkey:       publicKey,
             newAccountPubkey: lpMintKeypair.publicKey,
@@ -361,27 +348,20 @@ export function LaunchTab() {
           }),
           createInitializeMint2Instruction(
             lpMintKeypair.publicKey,
-            6,           // LP token decimals
-            lpAuthority, // mint authority
-            lpAuthority, // freeze authority
+            6,
+            lpAuthority,
+            lpAuthority,
             TOKEN_PROGRAM_ID,
           ),
-          // Create the pool's SKYE reserve ATA (Token-2022)
           createAssociatedTokenAccountInstruction(
             publicKey, skyeReserve, poolPda, mint,
             TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
           ),
-          // Create the pool's WSOL reserve ATA (standard Token)
           createAssociatedTokenAccountInstruction(
             publicKey, wsolReserve, poolPda, NATIVE_MINT,
             TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
           ),
-          // Initialize the Pool PDA via the AMM program
           initPoolIx,
-          // Wire fees to the treasury
-          setFeeIx,
-          // Create the pool's WalletRecord so the transfer hook can write
-          // position data when tokens move into the pool (especially at graduation)
           (() => {
             const [poolWR] = PublicKey.findProgramAddressSync(
               [Buffer.from("wallet"), poolPda.toBuffer(), mint.toBuffer()],
@@ -399,8 +379,6 @@ export function LaunchTab() {
               ],
             });
           })(),
-          // Pre-create the incinerator's LP token ATA so seed_pool_from_curve
-          // has somewhere to mint LP tokens at graduation time
           createAssociatedTokenAccountInstruction(
             publicKey, incineratorLpAta, INCINERATOR, lpMintKeypair.publicKey,
             TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,

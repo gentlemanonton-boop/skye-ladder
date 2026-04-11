@@ -477,7 +477,28 @@ async function switchHookToAmm(
     ],
   });
 
-  const tx = new Transaction().add(updatePoolIx, updateMetasIx);
+  // set_fee_config(team_wallet) — routes 50% of AMM swap fees to treasury.
+  // This was removed from the user's launch TX because pool.authority is
+  // now the platform admin (not the launcher). We set it here instead.
+  const TREASURY_WSOL = getAssociatedTokenAddressSync(
+    NATIVE_MINT, new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs"),
+    false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+  );
+  const setFeeData = Buffer.alloc(8 + 32);
+  setFeeData.set(discriminator("set_fee_config"), 0);
+  TREASURY_WSOL.toBuffer().copy(setFeeData, 8);
+
+  const setFeeIx = new TransactionInstruction({
+    programId: SKYE_AMM_ID,
+    data: setFeeData,
+    keys: [
+      { pubkey: admin.publicKey, isSigner: true,  isWritable: true  },
+      { pubkey: pool,            isSigner: false, isWritable: true  },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+  });
+
+  const tx = new Transaction().add(updatePoolIx, updateMetasIx, setFeeIx);
   tx.feePayer = admin.publicKey;
   const { blockhash } = await conn.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
