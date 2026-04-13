@@ -8,6 +8,7 @@
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   color: #e5e7eb;
+  text-transform: uppercase;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -24,6 +25,9 @@ body::before {
   background: url('/bg.jpeg') center center / cover no-repeat fixed;
 }
 /* No overlay — background shows through fully */
+
+/* Preserve case for addresses, hashes, and code */
+.font-mono, [class*="break-all"] { text-transform: none; }
 
 input[type="number"] { font-size: 16px; color: #f9fafb; }
 input[type="number"]::placeholder { color: rgba(255,255,255,0.25); }
