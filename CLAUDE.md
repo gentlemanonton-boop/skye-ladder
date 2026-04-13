@@ -43,15 +43,14 @@ Treasury WSOL ATA (where curve fees + AMM team fees land): `9XxMHTDuE58ESijXdbxR
         - Creates the curve's wallet record
    ↓
 3. TX 2: Skye AMM auto-prestages the canonical pool for THIS mint
+        - Metaplex metadata (name + symbol + URI from Vercel Blob)
         - Creates fresh LP mint (lp_authority PDA = mint authority)
         - Creates SKYE & WSOL reserve ATAs owned by Pool PDA
         - Calls AMM initialize_pool(fee_bps=100)
-        - Calls AMM set_fee_config(team_wallet=treasury_wsol_ata)
         - Creates incinerator's LP token ATA (rugproof burn destination)
+        - (set_fee_config is called by the watcher at graduation time)
    ↓
-4. TX 3: Metaplex metadata upload to Arweave (image + JSON)
-   ↓
-5. TX 4 (optional): Initial buy if the launcher specified one
+4. TX 3 (optional): Initial buy if the launcher specified one
    ↓
 6. Token trades on the bonding curve. Each trade triggers the transfer hook,
    which enforces sell restrictions per the Skye Ladder rules below.
@@ -72,7 +71,12 @@ Treasury WSOL ATA (where curve fees + AMM team fees land): `9XxMHTDuE58ESijXdbxR
               → liquidity is permanently locked, rugproof
         - Marks curve.graduated = true
    ↓
-10. Token now trades on the AMM. Treasury earns 50% of every swap fee
+10. The graduation watcher fires post-graduation switchover:
+        - update_pool: switches hook from curve → AMM price source
+        - update_extra_metas: rewrites hook account list for AMM
+        - set_fee_config: routes 50% of AMM swap fees to treasury
+   ↓
+11. Token now trades on the AMM. Treasury earns 50% of every swap fee
     forever; the other 50% stays in the pool LP (which is locked).
 ```
 
@@ -92,13 +96,6 @@ entry price and unlock progress.
 - Sell back the position's initial SOL value at any time
 - Live formula: `sellable = initial_sol / (token_balance × current_price)`
 - Anyone at or below entry price can ALWAYS sell 100%
-- **CRITICAL — `b4c761d` Phase 1 high-water exception**: in Phase 1 the
-  formula is `1/mult` which DECREASES as price rises. Writing this to the
-  high-water mark would let users sell cheap during Phase 1 and then
-  extract more SOL than their initial when price recovers. **Phase 1
-  returns the live value but does NOT mutate `unlocked_bps`.**
-  Phase 2+ formulas are monotonically increasing in mult, so the
-  high-water mark resumes its normal job there.
 
 ### Phase 2: 2x → 5x (Compressed Growth)
 - 50% at 2x → ~56.25% at 4.99x
@@ -121,13 +118,14 @@ entry price and unlock progress.
 ### Critical invariants
 
 1. **Each buy is an independent position.** Later buys cannot unlock earlier positions.
-2. **All % calculations use current `token_balance`**, not original buy amount.
-3. **High-water mark never DECREASES** (the stored `unlocked_bps` value), but Phase 1 doesn't WRITE it.
+2. **All % calculations use `original_balance`** (the buy amount), not current token_balance. Already-sold tokens are tracked as `original_balance - token_balance`.
+3. **No high-water mark.** Unlock is always a live function of current price vs entry price. If price drops, unlock drops. This prevents holders from accumulating a peak unlock and dumping during dips.
 4. **Sells deduct from highest multiplier first** — sort positions by mult descending, then iterate.
 5. **Underwater = 100% sellable.** No one is ever trapped.
 6. **Wallet → Wallet transfers = sell + new position.** Sender enforces unlock; receiver gets a new position at current spot price.
 7. **Price is SPOT, not TWAP.** Read directly from the curve PDA (or AMM pool, post-graduation). No oracle.
 8. **Pool address is whitelisted.** Source = `config.pool` is treated as a buy; destination = `config.pool` is treated as a sell.
+9. **Mint authority is revoked** at launch. No one can mint additional tokens after the initial supply is created.
 
 ---
 
