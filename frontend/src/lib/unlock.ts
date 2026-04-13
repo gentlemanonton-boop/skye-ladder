@@ -100,14 +100,9 @@ export function enrichPosition(pos: Position, currentPrice: number): PositionDis
   const clean = sanitizePosition(pos, currentPrice);
   const mult = clean.entryPrice > 0 ? (currentPrice * PRICE_SCALE) / clean.entryPrice : 0;
   const calculatedBps = calculateUnlockedBps(currentPrice, clean);
-  // Mirror the on-chain `effective_unlock_bps` rule:
-  //   - Phase 1 (mult < 2x): use the live formula only, ignore stored high-water.
-  //     The Phase 1 formula `1/mult` decreases as price rises, so high-water
-  //     would lock in an inflated unlock and let the user over-extract.
-  //   - Phase 2+: max(formula, stored high-water) as before.
-  const effectiveBps = mult < 2.0
-    ? calculatedBps
-    : Math.max(calculatedBps, clean.unlockedBps);
+  // No high-water mark — always use the live formula.
+  // If price drops, unlock drops with it.
+  const effectiveBps = calculatedBps;
   const sellableTokens = computeSellableTokens(clean, effectiveBps);
   return { ...clean, multiplier: mult, phase: getPhase(mult), calculatedBps, effectiveBps, sellableTokens };
 }

@@ -168,38 +168,19 @@ fn phase1_unlock(current_price: u64, position: &Position) -> Result<u32> {
     Ok(bps.min(BPS_100) as u32)
 }
 
-/// Apply the high-water mark: effective unlock is max(calculated, stored).
-/// Updates the position's unlocked_bps in place and returns the effective value.
+/// Return the effective unlock BPS for a position at the given price.
+/// Always uses the LIVE calculation — no high-water mark.
 ///
-/// PHASE 1 EXCEPTION: in Phase 1 (mult < 2x), the unlock formula is `1/mult`,
-/// which DECREASES as price rises. The high-water mark would inflate unlock
-/// above what the formula gives at the current price — letting users who
-/// sold cheap during Phase 1 extract more SOL than their initial when price
-/// later rises. We skip the high-water write in Phase 1 entirely; the live
-/// formula governs there. As soon as mult crosses 2x into Phase 2+, the
-/// high-water resumes its normal job (the Phase 2-5 formulas are
-/// monotonically increasing in mult so high-water serves its intended
-/// "lock in earned unlock" purpose).
+/// The unlock percentage is purely a function of current price vs entry
+/// price. If price drops, the unlock drops with it. This prevents holders
+/// from accumulating a high unlock at a peak and dumping during a dip.
 pub fn effective_unlock_bps(
     current_price: u64,
     position: &mut Position,
 ) -> Result<u32> {
     let raw = calculate_unlocked_bps(current_price, position)?;
-
-    // Phase 1: live formula only, no high-water mutation.
-    let cp = current_price as u128;
-    let ep = position.entry_price as u128;
-    if ep > 0 {
-        let mult_scaled = cp.checked_mul(10_000).ok_or(SkyeLadderError::MathOverflow)? / ep;
-        if mult_scaled < MULT_2X {
-            return Ok(raw);
-        }
-    }
-
-    // Phase 2+: high-water as before.
-    let effective = raw.max(position.unlocked_bps);
-    position.unlocked_bps = effective;
-    Ok(effective)
+    position.unlocked_bps = raw;
+    Ok(raw)
 }
 
 /// Calculate how many tokens are sellable from a position at the given price.
@@ -447,86 +428,79 @@ mod tests {
         assert_eq!(bps, 10_000);
     }
 
-    // ── High-water mark tests ──
+    // ── Live unlock tests (no high-water mark) ──
+    //
+    // The unlock percentage is always a live function of current price vs
+    // entry price. If price drops, unlock drops. No stored high-water mark
+    // inflates the unlock above what the current price warrants.
 
     #[test]
-    fn test_high_water_mark_preserves_on_dip() {
+    fn test_unlock_drops_with_price() {
         let mut pos = make_position(0.000003, 1_000_000_000, 3.0);
 
         // Price goes to 5x → unlock at 6250
         let price_5x = price_at_mult(pos.entry_price, 5.0);
         let bps = effective_unlock_bps(price_5x, &mut pos).unwrap();
         assert_eq!(bps, 6_250);
-        assert_eq!(pos.unlocked_bps, 6_250);
 
-        // Price dips to 3x → raw would be ~5312, but high-water keeps 6250
+        // Price dips to 3x → unlock drops to ~5312 (no high-water)
         let price_3x = price_at_mult(pos.entry_price, 3.0);
         let bps = effective_unlock_bps(price_3x, &mut pos).unwrap();
-        assert_eq!(bps, 6_250);
-        assert_eq!(pos.unlocked_bps, 6_250);
+        assert!(bps < 6_250, "unlock must drop with price, got {}", bps);
+        assert!(bps >= 5_200 && bps <= 5_210, "3x should be ~52%, got {}", bps);
     }
 
     #[test]
-    fn test_high_water_mark_increases() {
+    fn test_unlock_tracks_price_up_and_down() {
         let mut pos = make_position(0.000003, 1_000_000_000, 3.0);
 
         let price_5x = price_at_mult(pos.entry_price, 5.0);
-        effective_unlock_bps(price_5x, &mut pos).unwrap();
-        assert_eq!(pos.unlocked_bps, 6_250);
+        let bps_5x = effective_unlock_bps(price_5x, &mut pos).unwrap();
+        assert_eq!(bps_5x, 6_250);
 
-        // Price goes to 10x → should increase to 7500
         let price_10x = price_at_mult(pos.entry_price, 10.0);
-        let bps = effective_unlock_bps(price_10x, &mut pos).unwrap();
-        assert_eq!(bps, 7_500);
-        assert_eq!(pos.unlocked_bps, 7_500);
+        let bps_10x = effective_unlock_bps(price_10x, &mut pos).unwrap();
+        assert_eq!(bps_10x, 7_500);
+
+        // Back to 5x — should return to 6250, not stay at 7500
+        let bps_back = effective_unlock_bps(price_5x, &mut pos).unwrap();
+        assert_eq!(bps_back, 6_250);
     }
 
-    // ── Phase 1 NO-high-water tests ──
-    //
-    // The Phase 1 unlock formula is `1/mult` which DECREASES as price rises.
-    // Without these tests, the high-water mark would lock in the highest
-    // unlock the position has ever had (= the LOWEST mult it sold at) and
-    // let the user extract more SOL than their initial when price later
-    // rises. The fix: skip the high-water write entirely while mult < 2x.
+    // ── Phase 1 live formula tests ──
 
     #[test]
-    fn test_phase1_does_not_write_high_water() {
-        // Sell at 1.31x in Phase 1 — should NOT pin unlocked_bps.
+    fn test_phase1_unlock_decreases_as_price_rises() {
         let mut pos = make_position(0.000003, 1_000_000_000, 3.0);
         let price_1_31x = price_at_mult(pos.entry_price, 1.31);
         let bps = effective_unlock_bps(price_1_31x, &mut pos).unwrap();
-        // Live formula at 1.31x ≈ 76.3%
         assert!(bps >= 7_625 && bps <= 7_640, "got {}", bps);
-        // CRITICAL: stored high-water must remain 0
-        assert_eq!(pos.unlocked_bps, 0, "Phase 1 must not write high-water");
 
-        // Now move to 1.88x — formula should give ~53%, NOT the previous 76%
+        // Higher price in Phase 1 → lower unlock
         let price_1_88x = price_at_mult(pos.entry_price, 1.88);
         let bps2 = effective_unlock_bps(price_1_88x, &mut pos).unwrap();
         assert!(bps2 >= 5_315 && bps2 <= 5_320, "got {}", bps2);
-        assert_eq!(pos.unlocked_bps, 0, "Phase 1 must still not write high-water");
+        assert!(bps2 < bps, "Phase 1 unlock must decrease as price rises");
     }
 
     #[test]
-    fn test_phase1_then_phase2_resumes_high_water() {
+    fn test_phase1_to_phase2_transition() {
         let mut pos = make_position(0.000003, 1_000_000_000, 3.0);
 
-        // Sell at 1.5x in Phase 1 — formula = 66.67%, no high-water write
+        // Phase 1 at 1.5x
         let price_1_5x = price_at_mult(pos.entry_price, 1.5);
-        effective_unlock_bps(price_1_5x, &mut pos).unwrap();
-        assert_eq!(pos.unlocked_bps, 0);
+        let bps1 = effective_unlock_bps(price_1_5x, &mut pos).unwrap();
+        assert!(bps1 >= 6_660 && bps1 <= 6_670, "1.5x should be ~66.7%, got {}", bps1);
 
-        // Cross into Phase 2 at exactly 2x — formula = 50%, high-water DOES write
+        // Cross into Phase 2 at 2x
         let price_2x = price_at_mult(pos.entry_price, 2.0);
-        let bps = effective_unlock_bps(price_2x, &mut pos).unwrap();
-        assert_eq!(bps, 5_000);
-        assert_eq!(pos.unlocked_bps, 5_000, "Phase 2 must resume writing high-water");
+        let bps2 = effective_unlock_bps(price_2x, &mut pos).unwrap();
+        assert_eq!(bps2, 5_000);
 
-        // Sell at 5x cliff — high-water bumps to 6250
+        // 5x cliff
         let price_5x = price_at_mult(pos.entry_price, 5.0);
-        let bps = effective_unlock_bps(price_5x, &mut pos).unwrap();
-        assert_eq!(bps, 6_250);
-        assert_eq!(pos.unlocked_bps, 6_250);
+        let bps5 = effective_unlock_bps(price_5x, &mut pos).unwrap();
+        assert_eq!(bps5, 6_250);
     }
 
     #[test]
@@ -563,7 +537,6 @@ mod tests {
         // Sell 760M at 1.31x
         let _ = sellable_tokens(price_at_mult(pos.entry_price, 1.31), &mut pos).unwrap();
         pos.token_balance = 240_000_000;
-        assert_eq!(pos.unlocked_bps, 0); // no high-water from Phase 1
 
         // 5x: cliff = 62.5%, max_sellable = 625M, already_sold = 760M → 0
         let (sellable, _) = sellable_tokens(price_at_mult(pos.entry_price, 5.0), &mut pos).unwrap();

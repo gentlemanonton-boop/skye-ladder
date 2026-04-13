@@ -568,25 +568,25 @@ mod tests {
     }
 
     #[test]
-    fn test_high_water_mark_persists_through_sell() {
+    fn test_unlock_drops_with_price_on_sell() {
         let mut wallet = empty_wallet();
         let entry = price(0.000003);
         on_buy(&mut wallet, 1_000_000_000, entry).unwrap();
 
-        // Price at 10x → 75% unlock → max sellable = 750M from original 1B
+        // Price at 10x → 75% unlock → sell 100M
         let cp_10x = price(0.00003);
         on_sell(&mut wallet, 100_000_000, cp_10x).unwrap();
 
-        // High-water mark should be 7500
-        assert_eq!(wallet.positions[0].unlocked_bps, 7_500);
-
-        // Price drops to 3x — high-water keeps 75%
-        // Already sold 100M of 750M allowed. 650M still sellable.
+        // Price drops to 3x → unlock drops to ~53% (no high-water)
+        // max_sellable = ~530M, already_sold = 100M, sellable = ~430M
+        // Trying 650M should FAIL (exceeds unlock at 3x)
         let cp_3x = price(0.000009);
-        on_sell(&mut wallet, 650_000_000, cp_3x).unwrap();
+        let result = on_sell(&mut wallet, 650_000_000, cp_3x);
+        assert!(result.is_err(), "should fail — unlock dropped with price");
 
-        // Should succeed — total sold = 100M + 650M = 750M = exactly 75% of 1B
-        assert_eq!(wallet.positions[0].token_balance, 250_000_000);
+        // But selling 400M should succeed (within ~430M sellable)
+        on_sell(&mut wallet, 400_000_000, cp_3x).unwrap();
+        assert_eq!(wallet.positions[0].token_balance, 500_000_000);
     }
 
     // ── Phase 5 consolidation ──
