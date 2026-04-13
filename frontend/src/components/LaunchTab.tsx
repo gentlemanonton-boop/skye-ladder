@@ -8,6 +8,7 @@ import {
   ExtensionType, createInitializeMintInstruction, createInitializeMint2Instruction,
   createInitializeTransferHookInstruction,
   createAssociatedTokenAccountInstruction, createMintToInstruction,
+  createSetAuthorityInstruction, AuthorityType,
   createSyncNativeInstruction,
   getMintLen, MINT_SIZE, getMinimumBalanceForRentExemptMint,
   getAssociatedTokenAddressSync, ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -222,6 +223,7 @@ export function LaunchTab() {
         createAssociatedTokenAccountInstruction(publicKey, tokenReserve, curvePDA, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
         createAssociatedTokenAccountInstruction(publicKey, solReserve, curvePDA, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID),
         createMintToInstruction(mint, tokenReserve, publicKey, supplyRaw, [], TOKEN_2022_PROGRAM_ID),
+        createSetAuthorityInstruction(mint, publicKey, AuthorityType.MintTokens, null, [], TOKEN_2022_PROGRAM_ID),
         launchTokenIx,
         wrIx,
       );
