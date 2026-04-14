@@ -145,26 +145,21 @@ export default function App() {
 
       {/* ─── Content ─── */}
       <main className="mx-auto px-5 sm:px-6 pt-6 sm:pt-8 pb-20 space-y-5 sm:space-y-6 max-w-6xl">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-32 gap-5">
-            <div className="relative w-10 h-10">
-              <div className="absolute inset-0 rounded-full border-2 border-skye-500/20 border-t-skye-400 animate-spin" />
-              <div className="absolute inset-2 rounded-full border-2 border-purple-500/10 border-b-purple-400/50 animate-spin" style={{ animationDirection: "reverse", animationDuration: "1.5s" }} />
-            </div>
-            <span className="text-ink-faint text-[13px] shimmer-text">Loading pool...</span>
-          </div>
-        ) : poolError ? (
-          <div className="glass p-12 text-center space-y-5">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-rose-500/10 flex items-center justify-center">
-              <svg className="w-6 h-6 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
-            </div>
-            <p className="text-white font-semibold text-[18px] tracking-tight">Failed to load pool</p>
-            <p className="text-ink-tertiary text-[14px] max-w-xs mx-auto">{poolError}</p>
-            <button onClick={() => window.location.reload()} className="btn-glow inline-flex px-6 py-2.5 rounded-full bg-surface-2 text-white text-[14px] font-medium border border-white/[0.08]">Retry</button>
-          </div>
-        ) : (
           <div key={tab} className="tab-content space-y-5 sm:space-y-6">
-            {tab === "trade" && (
+            {tab === "trade" && (loading ? (
+              <div className="glass p-12 flex flex-col items-center justify-center gap-4">
+                <div className="relative w-8 h-8">
+                  <div className="absolute inset-0 rounded-full border-2 border-skye-500/20 border-t-skye-400 animate-spin" />
+                </div>
+                <span className="text-ink-faint text-[13px]">Loading pool...</span>
+              </div>
+            ) : poolError ? (
+              <div className="glass p-12 text-center space-y-4">
+                <p className="text-white font-semibold">Failed to load pool</p>
+                <p className="text-ink-tertiary text-[13px]">{poolError}</p>
+                <button onClick={() => window.location.reload()} className="text-skye-400 text-[13px] font-semibold hover:underline">Retry</button>
+              </div>
+            ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div className="gradient-border self-start lg:sticky lg:top-32">
                   <SwapPanel currentPrice={currentPrice} solUsd={solUsd} pool={pool} positions={positions} solBalance={solBalance} skyeBalance={skyeBalance} />
@@ -174,13 +169,12 @@ export default function App() {
                   <TierBreakdown positions={positions} currentPrice={currentPrice} />
                 </div>
               </div>
-            )}
+            ))}
             {tab === "chart" && <SafeChart><ChartTab /></SafeChart>}
             {tab === "launch" && <LaunchTab />}
             {tab === "discover" && <DiscoverTab />}
             {tab === "about" && <AboutTab />}
           </div>
-        )}
       </main>
 
       <TradeFlash />
