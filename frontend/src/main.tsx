@@ -8,13 +8,21 @@ import {
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+  CoinbaseWalletAdapter,
+} from "@solana/wallet-adapter-wallets";
 import App from "./App";
 import { RPC_URL } from "./constants";
 import "./index.css";
 
-const wallets: any[] = [];
+const wallets = [
+  new PhantomWalletAdapter(),
+  new SolflareWalletAdapter(),
+  new CoinbaseWalletAdapter(),
+];
 
-// Only autoConnect if user didn't explicitly disconnect
 const shouldAutoConnect = !localStorage.getItem("wallet_disconnected");
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

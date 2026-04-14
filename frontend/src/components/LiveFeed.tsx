@@ -24,7 +24,7 @@ export function LiveFeed() {
     <div className="glass p-3 sm:p-4">
       <div className="flex items-center gap-2 mb-3">
         <div className="w-2 h-2 rounded-full bg-skye-400 animate-pulse" />
-        <span className="font-pixel text-[8px] sm:text-[9px] text-skye-400 tracking-wider">LIVE TRADES</span>
+        <span className="font-pixel text-[7px] sm:text-[8px] text-skye-400 tracking-[0.15em]">LIVE TRADES</span>
       </div>
 
       <div className="space-y-1.5 max-h-[280px] overflow-y-auto overscroll-contain">
@@ -34,15 +34,15 @@ export function LiveFeed() {
             href={`https://solscan.io/tx/${t.signature}`}
             target="_blank"
             rel="noopener noreferrer"
-            className={`flex items-center gap-2 sm:gap-3 px-2.5 sm:px-3 py-2 rounded-lg hover:bg-white/5 transition-all ${
+            className={`flex items-center gap-2 sm:gap-3 rounded-xl hover:bg-surface-2 transition-all duration-200 px-3 py-2.5 ${
               i === 0 ? "animate-slideIn" : ""
             }`}
           >
             {/* Buy/Sell indicator */}
-            <div className={`font-pixel text-[7px] sm:text-[8px] w-8 text-center py-1 rounded ${
+            <div className={`font-pixel text-[7px] sm:text-[8px] rounded-full w-9 py-1 text-center ${
               t.type === "buy"
-                ? "bg-skye-500/15 text-skye-400"
-                : "bg-rose-500/15 text-rose-400"
+                ? "bg-skye-500/[0.1] text-skye-400"
+                : "bg-rose-500/[0.08] text-rose-400"
             }`}>
               {t.type === "buy" ? "BUY" : "SELL"}
             </div>
@@ -70,9 +70,7 @@ export function LiveFeed() {
       </div>
 
       {/* Pixel bottom bar */}
-      <div className="mt-3 h-px" style={{
-        background: "repeating-linear-gradient(90deg, rgba(34,197,94,0.2) 0px, rgba(34,197,94,0.2) 3px, transparent 3px, transparent 6px)",
-      }} />
+      <div className="mt-3 pixel-bar" />
     </div>
   );
 }

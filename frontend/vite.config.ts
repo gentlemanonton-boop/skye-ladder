@@ -10,6 +10,11 @@ export default defineConfig({
       globals: { Buffer: true, global: true, process: true },
     }),
   ],
+  esbuild: {
+    // Strip console.error/warn from production bundles — prevents leaking
+    // internal state (RPC errors, stack traces) to browser devtools.
+    pure: ["console.error", "console.warn"],
+  },
   define: {
     "process.env": {},
     global: "globalThis",

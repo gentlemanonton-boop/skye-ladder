@@ -71,67 +71,72 @@ export function UnlockProgress({ positions, currentPrice, skyeBalance }: Props) 
   const totalSellable = enriched.length > 0 ? Math.min(totalSellableFromPositions, heldRaw) : 0;
 
   return (
-    <div className="glass overflow-hidden">
+    <div className="glass scan-line overflow-hidden">
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full p-4 sm:p-5 flex items-center justify-between"
+        className="w-full p-4 sm:p-5 flex items-center justify-between transition-all duration-200"
       >
         <div className="flex items-center gap-3">
-          <h2 className="text-[14px] sm:text-[15px] font-bold text-ink-primary">Unlock Progress</h2>
+          <h2 className="text-[16px] font-bold text-white tracking-tighter">Unlock Progress</h2>
           {enriched.length > 0 && (
             <>
-              <span className="text-[13px] font-semibold text-skye-400 tabular-nums">{mult.toFixed(2)}x</span>
+              <span className="text-gradient text-[13px] font-semibold tabular-nums">{mult.toFixed(2)}x</span>
               <span className="text-[12px] text-ink-tertiary">{phaseLabel(mult)}</span>
             </>
           )}
         </div>
-        <svg className={`w-4 h-4 text-ink-faint transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <div className="hover:bg-surface-2 rounded-lg p-1 transition-all duration-250">
+          <svg className={`w-4 h-4 text-ink-faint transition-all duration-300 ${collapsed ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
       </button>
 
-      <div className={`transition-all duration-300 ease-out overflow-hidden ${collapsed ? "max-h-0" : "max-h-[400px]"}`}>
+      <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden ${collapsed ? "max-h-0" : "max-h-[400px]"}`}>
         <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-3">
-          <div className="flex items-baseline justify-between text-[13px]">
+          <div className="flex items-baseline justify-between text-[14px]">
             <span className="text-ink-secondary">{formatPercent(effectiveBps)} unlocked</span>
-            <span className="font-semibold text-skye-400">{formatTokens(totalSellable, 0)} sellable</span>
+            <span className="font-semibold text-[15px] text-skye-400">{formatTokens(totalSellable, 0)} sellable</span>
           </div>
 
           {/* Progress bar */}
           <div className="relative">
-            <div className="h-3 bg-white/5 rounded-full overflow-hidden">
+            <div className="h-2.5 bg-surface-2 rounded-full overflow-visible shadow-[inset_0_1px_3px_rgba(0,0,0,0.35)]">
               <div
-                className="h-full rounded-full transition-all duration-700 ease-out"
-                style={{ width: `${Math.max(fillPct, 2)}%`, background: "linear-gradient(90deg, #86efac, #22c55e, #16a34a)" }}
+                className="progress-fill h-full rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${Math.max(fillPct, 2)}%` }}
               />
             </div>
             <div
-              className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-[3px] border-skye-500 shadow-soft transition-all duration-700"
+              className="breathe absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white ring-2 ring-skye-500 shadow-glow-sm transition-all duration-700"
               style={{ left: `calc(${Math.max(fillPct, 2)}% - 8px)` }}
             />
           </div>
 
           <div className="relative h-7 mt-1">
-            {MILESTONES.map((m) => (
-              <div key={m.label} className="absolute -translate-x-1/2 flex flex-col items-center" style={{ left: `${m.pct}%` }}>
-                <div className={`w-px h-2.5 ${fillPct >= m.pct ? "bg-skye-400" : "bg-white/10"}`} />
-                <span className={`text-[11px] font-semibold mt-0.5 tabular-nums ${fillPct >= m.pct ? "text-skye-400" : "text-ink-faint"}`}>
-                  {m.label}
-                </span>
-              </div>
-            ))}
+            {MILESTONES.map((m) => {
+              const reached = fillPct >= m.pct;
+              return (
+                <div key={m.label} className="absolute -translate-x-1/2 flex flex-col items-center" style={{ left: `${m.pct}%` }}>
+                  <div className={`w-px h-2.5 ${reached ? "bg-skye-400" : "bg-white/10"}`} />
+                  <span className={`text-[10px] mt-0.5 tabular-nums ${reached ? "text-skye-400 font-bold" : "text-ink-faint font-medium"}`}>
+                    {m.label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
-          <div className="flex justify-between text-[13px] pt-3 border-t border-white/5">
-            <span className="text-ink-secondary">{heldHuman.toLocaleString(undefined, {maximumFractionDigits: 0})} SKYE held</span>
-            <span className="font-semibold text-skye-400">{formatTokens(totalSellable, 0)} sellable</span>
+          <div className="flex justify-between text-[14px] pt-3 border-t border-white/[0.06]">
+            <span className="text-ink-secondary text-[15px]"><span className="font-semibold text-white">{heldHuman.toLocaleString(undefined, {maximumFractionDigits: 0})}</span> SKYE held</span>
+            <span className="font-semibold text-[15px] text-skye-400">{formatTokens(totalSellable, 0)} sellable</span>
           </div>
 
           {/* Position breakdown */}
           {enriched.length > 0 && (
             <div className="space-y-1">
               {enriched.map((pos, i) => (
-                <div key={i} className="flex items-center justify-between text-[11px] bg-white/3 rounded-lg px-3 py-1.5">
+                <div key={i} className="flex items-center justify-between text-[11px] bg-surface-2 rounded-xl px-4 py-2.5 border border-white/[0.06] hover:-translate-y-0.5 transition-all duration-300">
                   <div className="flex items-center gap-2">
                     <div className={`w-1.5 h-1.5 rounded-full ${pos.multiplier >= 15 ? "bg-emerald-400" : pos.multiplier >= 1 ? "bg-skye-400" : "bg-rose-400"}`} />
                     <span className="text-ink-secondary tabular-nums">{pos.multiplier.toFixed(2)}x</span>

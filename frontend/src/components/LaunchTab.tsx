@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import {
-  Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL,
+  Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ComputeBudgetProgram,
 } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, NATIVE_MINT,
@@ -17,13 +17,11 @@ import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import { TransactionInstruction } from "@solana/web3.js";
 import ladderIdl from "../idl/skye_ladder.json";
 import { storeToken } from "../lib/launchStore";
-import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS, RPC_URL } from "../constants";
+import { SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SKYE_CURVE_ID, DECIMALS, RPC_URL, TREASURY_WALLET, SWAP_DISC } from "../constants";
 const DEFAULT_SUPPLY = 1_000_000_000;
 const INITIAL_VIRTUAL_SOL = 30 * LAMPORTS_PER_SOL;
 const LAUNCH_DISC = new Uint8Array([10,128,86,171,3,137,161,244]);
-const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
 const LAUNCH_FEE_LAMPORTS = 0.01 * LAMPORTS_PER_SOL;
-const SWAP_DISC = new Uint8Array([248,198,158,145,225,117,135,200]);
 
 // Skye AMM constants for the auto-prestage step that runs immediately after
 // the launch tx. Every launched token gets its AMM pool created with fee
@@ -212,6 +210,8 @@ export function LaunchTab() {
         .accounts({ payer: publicKey, wallet: curvePDA, mint, walletRecord: curveWR, systemProgram: SystemProgram.programId }).instruction();
 
       const tx1 = new Transaction().add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
         SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: TREASURY_WALLET, lamports: LAUNCH_FEE_LAMPORTS }),
         SystemProgram.createAccount({
           fromPubkey: publicKey, newAccountPubkey: mint,
@@ -299,6 +299,10 @@ export function LaunchTab() {
         });
 
         const tx2 = new Transaction();
+        tx2.add(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
+        );
 
         // Upload image + metadata to Vercel Blob via API (no wallet signature).
         // This makes images visible cross-device immediately.
@@ -397,7 +401,10 @@ export function LaunchTab() {
             connection.getAccountInfo(buyerWR),
           ]);
 
-          const buyIxs: TransactionInstruction[] = [];
+          const buyIxs: TransactionInstruction[] = [
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+            ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
+          ];
           buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, creatorATA, publicKey, mint, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
           if (!wsolInfo) buyIxs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
           if (!buyerWRInfo) {
@@ -411,10 +418,17 @@ export function LaunchTab() {
             createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
           );
 
+          // Calculate minOut from known initial reserves to prevent sandwich attacks.
+          // At launch the curve has INITIAL_VIRTUAL_SOL and supplyRaw tokens.
+          const fee = Math.floor(lamportsIn * 100 / 10000);
+          const effectiveIn = lamportsIn - fee;
+          const expectedOut = Math.floor(effectiveIn * Number(supplyRaw) / (INITIAL_VIRTUAL_SOL + effectiveIn));
+          const minOut = BigInt(Math.floor(expectedOut * 0.95)); // 5% slippage
+
           const swapData = Buffer.alloc(8 + 8 + 8 + 1);
           swapData.set(SWAP_DISC, 0);
           swapData.writeBigUInt64LE(BigInt(lamportsIn), 8);
-          swapData.writeBigUInt64LE(0n, 16);
+          swapData.writeBigUInt64LE(minOut, 16);
           swapData[24] = 1;
 
           buyIxs.push(new TransactionInstruction({
@@ -484,9 +498,9 @@ export function LaunchTab() {
   const isLaunching = step > 0 && step < 4;
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
       <div className="glass p-5 sm:p-6 space-y-4">
-        <h3 className="font-pixel text-[10px] text-skye-400 tracking-wider mb-4">Create coin</h3>
+        <h3 className="font-pixel text-[10px] sm:text-[11px] text-skye-400 tracking-wider mb-4">Create coin</h3>
 
         {/* Phantom warning notice */}
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2.5">
@@ -503,7 +517,7 @@ export function LaunchTab() {
           <label className="text-[12px] font-medium text-ink-tertiary mb-2 block">Token Image</label>
           <div className="flex items-center gap-4">
             <div onClick={() => fileInputRef.current?.click()}
-              className="w-20 h-20 rounded-xl bg-white/5 border-2 border-dashed border-white/10 hover:border-skye-500/30 flex items-center justify-center cursor-pointer transition-all overflow-hidden flex-shrink-0">
+              className="w-20 h-20 rounded-xl bg-surface-2 border-2 border-dashed border-surface-border hover:border-white/10 flex items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden flex-shrink-0">
               {imagePreview ? <img src={imagePreview} alt="" className="w-full h-full object-cover" /> :
                 <div className="text-center"><span className="text-[20px]">+</span><p className="text-[8px] text-ink-faint mt-0.5">Upload</p></div>}
             </div>
@@ -521,12 +535,12 @@ export function LaunchTab() {
           <div>
             <label className="text-[12px] font-medium text-ink-tertiary mb-1 block">Name</label>
             <input type="text" placeholder="My Token" value={name} onChange={e => setName(e.target.value)} disabled={isLaunching}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[44px]" />
+              className="w-full bg-surface-2 border border-surface-border rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 min-h-[44px]" />
           </div>
           <div>
             <label className="text-[12px] font-medium text-ink-tertiary mb-1 block">Symbol</label>
             <input type="text" placeholder="TKN" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} maxLength={10} disabled={isLaunching}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[44px]" />
+              className="w-full bg-surface-2 border border-surface-border rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 min-h-[44px]" />
           </div>
         </div>
 
@@ -534,13 +548,13 @@ export function LaunchTab() {
         <div>
           <label className="text-[12px] font-medium text-ink-tertiary mb-1 block">Description</label>
           <textarea placeholder="What's your token about?" value={description} onChange={e => setDescription(e.target.value)} disabled={isLaunching} rows={3}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition resize-none" />
+            className="w-full bg-surface-2 border border-surface-border rounded-xl px-4 py-3 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 resize-none" />
         </div>
 
         {/* Supply — fixed */}
         <div>
           <label className="text-[12px] font-medium text-ink-tertiary mb-1 block">Total Supply</label>
-          <div className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[14px] text-ink-faint min-h-[44px]">
+          <div className="w-full bg-surface-2 border border-surface-border rounded-xl px-4 py-3 text-[14px] text-ink-faint min-h-[44px]">
             {Number(supply).toLocaleString()} (fixed)
           </div>
         </div>
@@ -550,13 +564,13 @@ export function LaunchTab() {
           <label className="text-[12px] font-medium text-ink-tertiary mb-2 block">Social Links <span className="text-ink-faint">(optional)</span></label>
           <div className="grid grid-cols-2 gap-2">
             <input type="url" placeholder="Website" value={website} onChange={e => setWebsite(e.target.value)} disabled={isLaunching}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[40px]" />
+              className="bg-surface-2 border border-surface-border rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 min-h-[40px]" />
             <input type="text" placeholder="Twitter @" value={twitter} onChange={e => setTwitter(e.target.value)} disabled={isLaunching}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[40px]" />
+              className="bg-surface-2 border border-surface-border rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 min-h-[40px]" />
             <input type="text" placeholder="Telegram" value={telegram} onChange={e => setTelegram(e.target.value)} disabled={isLaunching}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[40px]" />
+              className="bg-surface-2 border border-surface-border rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 min-h-[40px]" />
             <input type="text" placeholder="Discord" value={discord} onChange={e => setDiscord(e.target.value)} disabled={isLaunching}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[40px]" />
+              className="bg-surface-2 border border-surface-border rounded-lg px-3 py-2.5 text-[12px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 min-h-[40px]" />
           </div>
         </div>
 
@@ -566,7 +580,7 @@ export function LaunchTab() {
           <div className="relative">
             <input type="number" placeholder="0.0" value={initialBuySol} onChange={e => setInitialBuySol(e.target.value)} disabled={isLaunching}
               max="2" step="0.1"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-14 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition min-h-[44px]" />
+              className="w-full bg-surface-2 border border-surface-border rounded-xl px-4 py-3 pr-14 text-[14px] text-ink-primary outline-none focus:border-skye-500/30 transition-colors transition-all duration-200 min-h-[44px]" />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] text-ink-faint">SOL</span>
           </div>
           <p className="text-[10px] text-ink-faint mt-1">Buy in at launch — keeps the chart from being empty</p>
@@ -574,9 +588,9 @@ export function LaunchTab() {
 
         {/* Info */}
         <div className="grid grid-cols-3 gap-2 text-[11px]">
-          <div className="bg-white/3 rounded-lg px-3 py-2 border border-white/5"><span className="text-ink-faint">Restrictions</span><p className="text-skye-400 font-semibold mt-0.5">5-Phase</p></div>
-          <div className="bg-white/3 rounded-lg px-3 py-2 border border-white/5"><span className="text-ink-faint">Graduation</span><p className="text-skye-400 font-semibold mt-0.5">85 SOL</p></div>
-          <div className="bg-white/3 rounded-lg px-3 py-2 border border-white/5"><span className="text-ink-faint">Pricing</span><p className="text-ink-secondary font-semibold mt-0.5">Bonding Curve</p></div>
+          <div className="bg-surface-2 rounded-lg px-3 py-2 border border-surface-border"><span className="text-ink-faint">Restrictions</span><p className="text-skye-400 font-semibold mt-0.5">5-Phase</p></div>
+          <div className="bg-surface-2 rounded-lg px-3 py-2 border border-surface-border"><span className="text-ink-faint">Graduation</span><p className="text-skye-400 font-semibold mt-0.5">85 SOL</p></div>
+          <div className="bg-surface-2 rounded-lg px-3 py-2 border border-surface-border"><span className="text-ink-faint">Pricing</span><p className="text-ink-secondary font-semibold mt-0.5">Bonding Curve</p></div>
         </div>
 
         {/* Progress */}
@@ -587,7 +601,7 @@ export function LaunchTab() {
               <span className="font-pixel text-[9px] text-skye-400">{stepLabels[step]}</span>
             </div>
             <div className="flex gap-1">
-              {[1,2,3].map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-skye-500" : "bg-white/5"}`} />)}
+              {[1,2,3].map(s => <div key={s} className={`h-1 flex-1 rounded-full transition-all duration-200 ${s <= step ? "bg-skye-500" : "bg-surface-2"}`} />)}
             </div>
             <p className="text-[11px] text-ink-faint">Approve in wallet</p>
           </div>
@@ -596,7 +610,7 @@ export function LaunchTab() {
         {/* Button */}
         {publicKey ? (!isLaunching ? (
           <button onClick={handleLaunch} disabled={!name.trim() || !symbol.trim()}
-            className="w-full py-4 rounded-xl bg-gradient-to-r from-skye-500 to-skye-600 hover:from-skye-600 hover:to-skye-700 text-white font-semibold text-[15px] transition-all active:scale-[0.98] disabled:opacity-40 min-h-[52px]">
+            className="w-full py-4 rounded-xl bg-skye-500 hover:bg-skye-600 text-white font-semibold text-[15px] transition-all duration-200 active:scale-[0.98] disabled:opacity-40 min-h-[52px]">
             Create coin
           </button>
         ) : null) : (
@@ -604,7 +618,7 @@ export function LaunchTab() {
         )}
 
         {result && (
-          <div className="bg-skye-500/10 border border-skye-500/20 rounded-xl p-4 space-y-3">
+          <div className="bg-emerald-500/8 border border-emerald-500/15 rounded-xl p-4 space-y-3">
             <p className="font-pixel text-[9px] text-skye-400">TOKEN LAUNCHED</p>
             <p className="text-[12px] text-ink-secondary">Mint: <span className="text-ink-primary break-all">{result.mint}</span></p>
             <a href={`https://solscan.io/token/${result.mint}`} target="_blank" rel="noopener noreferrer"
@@ -616,8 +630,8 @@ export function LaunchTab() {
       </div>
 
       {/* How it works */}
-      <div className="glass p-5 sm:p-6">
-        <h3 className="font-pixel text-[10px] text-amber-400 tracking-wider mb-4">HOW IT WORKS</h3>
+      <div className="glass p-5 sm:p-6 lg:sticky lg:top-32">
+        <h3 className="font-pixel text-[10px] sm:text-[11px] text-amber-400 tracking-wider mb-4">HOW IT WORKS</h3>
         <div className="space-y-2">
           {[
             { s: "01", t: "Fill in token details, upload image, add socials", c: "text-skye-400" },
@@ -626,7 +640,7 @@ export function LaunchTab() {
             { s: "04", t: "Sell restrictions active from day one via Transfer Hook", c: "text-cyan-400" },
             { s: "05", t: "At 85 SOL, liquidity migrates to Skye AMM pool", c: "text-purple-400" },
           ].map((s) => (
-            <div key={s.s} className="flex items-center gap-3 bg-white/3 rounded-xl px-4 py-3 border border-white/5">
+            <div key={s.s} className="flex items-center gap-3 bg-surface-2 rounded-xl px-4 py-3 border border-surface-border transition-all duration-200">
               <span className={`font-pixel text-[9px] ${s.c}`}>{s.s}</span>
               <span className="text-[13px] text-ink-secondary">{s.t}</span>
             </div>

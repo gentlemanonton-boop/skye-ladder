@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
-  PublicKey, SystemProgram, LAMPORTS_PER_SOL,
+  PublicKey, SystemProgram, LAMPORTS_PER_SOL, ComputeBudgetProgram,
   TransactionInstruction, TransactionMessage, VersionedTransaction,
 } from "@solana/web3.js";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
-import { SKYE_MINT, SKYE_LADDER_PROGRAM_ID, SKYE_CURVE_ID, SKYE_AMM_PROGRAM_ID, SWAP_DISC } from "../constants";
+import { SKYE_MINT, SKYE_LADDER_PROGRAM_ID, SKYE_CURVE_ID, SKYE_AMM_PROGRAM_ID, SWAP_DISC, TREASURY_WALLET } from "../constants";
 import { getCurvePDA, getWalletRecordPDA, getConfigPDA, getExtraMetasPDA } from "../lib/pda";
 
 export function useSwap() {
@@ -42,7 +42,10 @@ export function useSwap() {
           connection.getAccountInfo(getWalletRecordPDA(publicKey)[0]),
         ]);
 
-        const ixs: TransactionInstruction[] = [];
+        const ixs: TransactionInstruction[] = [
+          ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
+        ];
 
         if (!tokenInfo) ixs.push(createAssociatedTokenAccountInstruction(publicKey, userToken, publicKey, SKYE_MINT, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
         if (!wsolInfo) ixs.push(createAssociatedTokenAccountInstruction(publicKey, userWsol, publicKey, NATIVE_MINT, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
@@ -111,7 +114,6 @@ export function useSwap() {
             data: swapData,
           }));
         } else {
-          const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
           const [curvePDA] = getCurvePDA();
           const tokenReserve = getAssociatedTokenAddressSync(SKYE_MINT, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
           const solReserve = getAssociatedTokenAddressSync(NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);

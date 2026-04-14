@@ -67,7 +67,6 @@ const DEAD_MINTS = new Set([
   "DXSnfYZ4xkMiziCb8gcQKC8ZAtt7y7DFYMCRJrV18a3G", // failed launch (no pool)
   "7phvGL1U9T1Xn8df426fTT81JdfmNNmATrWyB76G18Bj", // failed launch (no pool)
   "GkSdENrVHAThJr39RKGS3hcRV5hqmfBjJUXJAp9nxQ2V", // failed launch (no mint, no pool)
-  "zBWUvM1M4aPvCMQ1rJtg9GYw2Sp2nJSYpNgEQJ3tSTy", // duplicate zoomer launch
   "EbjHFdcf3XKpfP8Vqwq3fkphMAnwfXx44WyftFnN7jSL", // looksmaxxing test (no image)
   "6VS9dRiXtK93ic2WucNbfovY2GeyUxtPhvnkvMF8Czcd", // looksmaxxing test (no image)
 ]);

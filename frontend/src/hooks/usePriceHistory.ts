@@ -54,18 +54,22 @@ export interface PriceHistoryState {
 const HISTORY_LIMIT = 50;
 const BATCH = 10;
 
-export function usePriceHistory(): PriceHistoryState {
+export function usePriceHistory(mint?: PublicKey): PriceHistoryState {
   const { connection } = useConnection();
   const [history, setHistory] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const ref = useRef(history);
   ref.current = history;
+  const activeMint = mint ?? SKYE_MINT;
 
   useEffect(() => {
     let cancelled = false;
-    const [curvePDA] = getCurvePDA();
+    setHistory([]);
+    setLoading(true);
+    ref.current = [];
+    const [curvePDA] = getCurvePDA(activeMint);
     const tokenReserve = getAssociatedTokenAddressSync(
-      SKYE_MINT, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
+      activeMint, curvePDA, true, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
     );
     const wsolReserve = getAssociatedTokenAddressSync(
       NATIVE_MINT, curvePDA, true, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
@@ -219,7 +223,7 @@ export function usePriceHistory(): PriceHistoryState {
       cancelled = true;
       connection.removeAccountChangeListener(sub);
     };
-  }, [connection]);
+  }, [connection, activeMint.toBase58()]);
 
   return { history, loading };
 }

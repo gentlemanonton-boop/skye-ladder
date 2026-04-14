@@ -43,10 +43,10 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
   return (
     <div className="glass overflow-hidden">
       <div className="p-4 sm:p-5">
-        <h2 className="text-[14px] sm:text-[15px] font-bold text-ink-primary mb-4">Holdings</h2>
+        <h2 className="text-[16px] font-semibold text-white tracking-tight mb-4">Holdings</h2>
 
         {/* SOL Balance — always show */}
-        <div className="flex items-center justify-between py-2.5 border-b border-white/5">
+        <div className="flex items-center justify-between py-2.5 border-b border-white/[0.05]">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-cyan-400 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">S</div>
             <div>
@@ -62,9 +62,9 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
 
         {/* SKYE Position Summary */}
         {hasSkye && pool && (
-          <div className="flex items-center justify-between py-2.5 border-b border-white/5">
+          <div className="flex items-center justify-between py-2.5 border-b border-white/[0.05]">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-skye-500 to-skye-700 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">SK</div>
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-skye-500 to-skye-600 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">SK</div>
               <div>
                 <div className="text-[13px] font-semibold text-ink-primary">SKYE</div>
                 <div className="text-[11px] text-ink-faint">{enriched.length} position{enriched.length !== 1 ? "s" : ""}</div>
@@ -80,18 +80,18 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
         {/* SKYE P&L Card */}
         {hasSkye && pool && (
           <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="bg-white/5 rounded-lg p-2.5 text-center">
-              <div className="text-[10px] text-ink-tertiary mb-0.5">Value</div>
+            <div className="bg-surface-0 rounded-2xl border border-white/[0.06] p-3.5 text-center">
+              <div className="text-[11px] text-ink-faint uppercase tracking-wider mb-0.5">Value</div>
               <div className="text-[13px] font-bold text-ink-primary tabular-nums">{valueSol.toFixed(4)}</div>
               <div className="text-[10px] text-ink-faint">{formatUsd(valueUsd, 2)}</div>
             </div>
-            <div className="bg-white/5 rounded-lg p-2.5 text-center">
-              <div className="text-[10px] text-ink-tertiary mb-0.5">Cost</div>
+            <div className="bg-surface-0 rounded-2xl border border-white/[0.06] p-3.5 text-center">
+              <div className="text-[11px] text-ink-faint uppercase tracking-wider mb-0.5">Cost</div>
               <div className="text-[13px] font-bold text-ink-primary tabular-nums">{costSol.toFixed(4)}</div>
               <div className="text-[10px] text-ink-faint">{formatUsd(costSol * solUsd, 2)}</div>
             </div>
-            <div className="bg-white/5 rounded-lg p-2.5 text-center">
-              <div className="text-[10px] text-ink-tertiary mb-0.5">P&L</div>
+            <div className="bg-surface-0 rounded-2xl border border-white/[0.06] p-3.5 text-center">
+              <div className="text-[11px] text-ink-faint uppercase tracking-wider mb-0.5">P&L</div>
               <div className={`text-[13px] font-bold tabular-nums ${isProfit ? "text-emerald-400" : "text-rose-400"}`}>
                 {isProfit ? "+" : ""}{pnlSol.toFixed(4)}
               </div>
@@ -106,7 +106,7 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
         {hasSkye && enriched.length > 0 && (
           <div className="mt-3 space-y-1.5">
             {enriched.map((pos, i) => (
-              <div key={i} className="flex items-center justify-between text-[12px] bg-white/3 rounded-lg px-3 py-2">
+              <div key={i} className="flex items-center justify-between text-[12px] bg-surface-0 rounded-xl border border-white/[0.06] px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div className={`w-1.5 h-1.5 rounded-full ${pos.multiplier >= 15 ? "bg-emerald-400" : pos.multiplier >= 1 ? "bg-skye-400" : "bg-rose-400"}`} />
                   <span className="text-ink-secondary font-medium tabular-nums">{pos.multiplier.toFixed(2)}x</span>
@@ -119,7 +119,7 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
               </div>
             ))}
             {totalSellable > 0 && (
-              <div className="flex justify-between items-center text-[12px] pt-2 border-t border-white/5">
+              <div className="flex justify-between items-center text-[12px] pt-2 border-t border-white/[0.05]">
                 <span className="text-ink-tertiary">Sellable now</span>
                 <span className="font-semibold text-skye-400">{formatTokens(totalSellable, 0)} SKYE</span>
               </div>
@@ -133,7 +133,7 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
           const dustCount = allTokens.length - allTokens.filter(t => (t.usdValue ?? 0) >= 1).length;
           const visible = showAll ? filtered : filtered.slice(0, 5);
           return (
-            <div className="mt-3 pt-3 border-t border-white/5">
+            <div className="mt-3 pt-3 border-t border-white/[0.05]">
               {visible.map((token) => (
                 <TokenRow key={token.mint} token={token} />
               ))}
@@ -141,7 +141,7 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
                 {filtered.length > 5 && (
                   <button
                     onClick={() => setShowAll(!showAll)}
-                    className="text-[12px] text-skye-400 font-semibold hover:underline"
+                    className="text-[12px] text-skye-400 font-medium hover:underline transition-all duration-200"
                   >
                     {showAll ? "Show less" : `Show all (${filtered.length})`}
                   </button>
@@ -149,7 +149,7 @@ export function Portfolio({ currentPrice, solUsd }: Props) {
                 {dustCount > 0 && (
                   <button
                     onClick={() => setShowDust(!showDust)}
-                    className="text-[11px] text-ink-faint hover:text-ink-tertiary ml-auto"
+                    className="text-[11px] text-skye-400 font-medium hover:underline transition-all duration-200 ml-auto"
                   >
                     {showDust ? "Hide dust" : `+${dustCount} dust (<$1)`}
                   </button>
@@ -169,7 +169,7 @@ function TokenRow({ token }: { token: TokenBalance }) {
   if (token.mint === skyeMint) return null;
 
   return (
-    <div className="flex items-center justify-between py-2">
+    <div className="flex items-center justify-between py-2 border-b border-white/[0.05]">
       <div className="flex items-center gap-2.5">
         {token.logo ? (
           <img src={token.logo} alt={token.symbol} className="w-7 h-7 rounded-full flex-shrink-0" />

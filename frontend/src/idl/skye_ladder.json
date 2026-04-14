@@ -499,6 +499,14 @@
           {
             "name": "originalBalance",
             "type": "u64"
+          },
+          {
+            "name": "soldBefore5x",
+            "type": "bool"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
           }
         ]
       }

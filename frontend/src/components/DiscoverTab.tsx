@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ComputeBudgetProgram } from "@solana/web3.js";
 import {
   TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, NATIVE_MINT,
   getAssociatedTokenAddressSync, getAccount, createAssociatedTokenAccountInstruction,
@@ -8,32 +8,30 @@ import {
 } from "@solana/spl-token";
 import { Program, AnchorProvider } from "@coral-xyz/anchor";
 import ladderIdl from "../idl/skye_ladder.json";
-import { formatUsd } from "../lib/format";
+import { formatUsd, computeSwapOutput, computeCurveSellOutput } from "../lib/format";
 import { useSolPrice } from "../hooks/useSolPrice";
 import { useDiscoveredTokens, type DiscoveredTokenBase } from "../hooks/useDiscoveredTokens";
-import { SKYE_CURVE_ID, SKYE_AMM_PROGRAM_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS, SKYE_MINT } from "../constants";
+import { SKYE_CURVE_ID, SKYE_AMM_PROGRAM_ID, SKYE_LADDER_PROGRAM_ID as SKYE_LADDER_ID, SWAP_DISC, DECIMALS, SKYE_MINT, TREASURY_WALLET } from "../constants";
 const GRADUATION_SOL = 85;
+
+function formatAge(ts: number): string {
+  const s = Math.floor(Date.now() / 1000 - ts);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+/** Reject javascript: and data: URIs in user-supplied social links. */
+function safeUrl(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : "#";
+}
 
 type DiscoveredToken = DiscoveredTokenBase;
 const SKYE_MINT_STR = SKYE_MINT.toBase58();
 
 function computeCurveBuy(vSol: number, vToken: number, solIn: number): number {
-  const fee = solIn * 100 / 10000;
-  const eff = solIn - fee;
-  return Math.floor(eff * vToken / (vSol + eff));
-}
-
-function computeCurveSell(vSol: number, vToken: number, tokensIn: number): number {
-  if (tokensIn <= 0 || vSol <= 0 || vToken <= 0) return 0;
-  const rawOut = Math.floor((tokensIn * vSol) / (vToken + tokensIn));
-  const fee = Math.floor((rawOut * 100) / 10000);
-  return rawOut - fee;
-}
-
-function computeAmmSwap(reserveIn: number, reserveOut: number, amountIn: number, feeBps: number): number {
-  const fee = (amountIn * feeBps) / 10000;
-  const eff = amountIn - fee;
-  return Math.floor((eff * reserveOut) / (reserveIn + eff));
+  return Math.floor(computeSwapOutput(vSol, vToken, solIn, 100));
 }
 
 export function DiscoverTab() {
@@ -44,6 +42,33 @@ export function DiscoverTab() {
   const tokens = allTokens.filter(t => t.mint !== SKYE_MINT_STR);
   const activeTokens = tokens.filter(t => !t.graduated);
   const graduatedTokens = tokens.filter(t => t.graduated);
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  type SortKey = "mcap" | "progress" | "created";
+  type SortDir = "asc" | "desc";
+  const [sortKey, setSortKey] = useState<SortKey>("created");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [filter, setFilter] = useState<"all" | "bonding" | "graduated">("all");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("desc"); }
+  }
+
+  const filteredTokens = filter === "all" ? tokens : filter === "bonding" ? activeTokens : graduatedTokens;
+  const sortedTokens = [...filteredTokens].sort((a, b) => {
+    let diff = 0;
+    if (sortKey === "mcap") {
+      const mcA = a.virtualToken > 0 ? (a.virtualSol / a.virtualToken) * 1e9 : 0;
+      const mcB = b.virtualToken > 0 ? (b.virtualSol / b.virtualToken) * 1e9 : 0;
+      diff = mcA - mcB;
+    } else if (sortKey === "progress") {
+      diff = a.realSol - b.realSol;
+    } else if (sortKey === "created") {
+      diff = a.launchedAt - b.launchedAt;
+    }
+    return sortDir === "asc" ? diff : -diff;
+  });
+
   const [trading, setTrading] = useState<string | null>(null);
   const [isBuy, setIsBuy] = useState(true);
   const [amount, setAmount] = useState("");
@@ -94,13 +119,16 @@ export function DiscoverTab() {
         if (parseFloat(amount) > 2) throw new Error("Creator buy limit: 2 SOL max per buy on your own token.");
       }
 
-      const TREASURY_WALLET = new PublicKey("5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs");
       const mint = new PublicKey(token.mint);
       const [curvePDA] = PublicKey.findProgramAddressSync([Buffer.from("curve"), mint.toBuffer()], SKYE_CURVE_ID);
       const userToken = getAssociatedTokenAddressSync(mint, publicKey, false, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
       const userWsol = getAssociatedTokenAddressSync(NATIVE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
 
       const tx = new Transaction();
+      tx.add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50_000 }),
+      );
 
       const [tokenInfo, wsolInfo, buyerWRInfo] = await Promise.all([
         connection.getAccountInfo(userToken),
@@ -126,9 +154,12 @@ export function DiscoverTab() {
       let rSol = token.virtualSol;
       let rToken = token.virtualToken;
       let feeBps = 100;
+      // Fetch AMM data once and reuse for both output estimate and tx construction
+      let ammPoolPDA: PublicKey | null = null;
+      let ammInfo: Awaited<ReturnType<typeof connection.getAccountInfo>> = null;
       if (token.graduated) {
-        const [ammPoolPDA] = PublicKey.findProgramAddressSync([Buffer.from("pool"), mint.toBuffer(), NATIVE_MINT.toBuffer()], SKYE_AMM_PROGRAM_ID);
-        const ammInfo = await connection.getAccountInfo(ammPoolPDA);
+        [ammPoolPDA] = PublicKey.findProgramAddressSync([Buffer.from("pool"), mint.toBuffer(), NATIVE_MINT.toBuffer()], SKYE_AMM_PROGRAM_ID);
+        ammInfo = await connection.getAccountInfo(ammPoolPDA);
         if (ammInfo && ammInfo.data.length >= 218) {
           rToken = Number(ammInfo.data.readBigUInt64LE(200));
           rSol = Number(ammInfo.data.readBigUInt64LE(208));
@@ -138,7 +169,7 @@ export function DiscoverTab() {
 
       if (isBuy) {
         rawAmount = BigInt(Math.floor(amountNum * LAMPORTS_PER_SOL));
-        estimatedOut = computeAmmSwap(rSol, rToken, amountNum * LAMPORTS_PER_SOL, feeBps);
+        estimatedOut = computeSwapOutput(rSol, rToken, amountNum * LAMPORTS_PER_SOL, feeBps);
         tx.add(
           SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: userWsol, lamports: Number(rawAmount) }),
           createSyncNativeInstruction(userWsol, TOKEN_PROGRAM_ID),
@@ -146,9 +177,9 @@ export function DiscoverTab() {
       } else {
         rawAmount = BigInt(Math.floor(amountNum * 1e9));
         if (token.graduated) {
-          estimatedOut = computeAmmSwap(rToken, rSol, amountNum * 1e9, feeBps);
+          estimatedOut = computeSwapOutput(rToken, rSol, amountNum * 1e9, feeBps);
         } else {
-          estimatedOut = computeCurveSell(token.virtualSol, token.virtualToken, amountNum * 1e9);
+          estimatedOut = computeCurveSellOutput(token.virtualSol, token.virtualToken, amountNum * 1e9, 100);
         }
       }
 
@@ -164,9 +195,7 @@ export function DiscoverTab() {
       swapData[24] = isBuy ? 1 : 0;
 
       if (token.graduated) {
-        const [ammPoolPDA] = PublicKey.findProgramAddressSync([Buffer.from("pool"), mint.toBuffer(), NATIVE_MINT.toBuffer()], SKYE_AMM_PROGRAM_ID);
-        const ammInfo = await connection.getAccountInfo(ammPoolPDA);
-        if (!ammInfo || ammInfo.data.length < 252) throw new Error("AMM pool not found for graduated token");
+        if (!ammPoolPDA || !ammInfo || ammInfo.data.length < 252) throw new Error("AMM pool not found for graduated token");
         const skyeReserve = new PublicKey(ammInfo.data.subarray(104, 136));
         const wsolReserve = new PublicKey(ammInfo.data.subarray(136, 168));
         const teamWallet = new PublicKey(ammInfo.data.subarray(220, 252));
@@ -265,95 +294,131 @@ export function DiscoverTab() {
 
     let outputEstimate = "";
     let outputSolValue = "";
+    let priceImpactPct = 0;
     if (isTrading && amountNum > 0) {
       if (isBuy) {
+        const inLamports = amountNum * LAMPORTS_PER_SOL;
         const out = t.graduated
-          ? computeAmmSwap(t.virtualSol, t.virtualToken, amountNum * LAMPORTS_PER_SOL, 100)
-          : computeCurveBuy(t.virtualSol, t.virtualToken, amountNum * LAMPORTS_PER_SOL);
+          ? computeSwapOutput(t.virtualSol, t.virtualToken, inLamports, 100)
+          : computeCurveBuy(t.virtualSol, t.virtualToken, inLamports);
         outputEstimate = `~${(out / 1e9).toLocaleString(undefined, { maximumFractionDigits: 0 })} ${t.symbol}`;
+        if (out > 0) {
+          const spotPrice = t.virtualSol / t.virtualToken;
+          const effectivePrice = inLamports / out;
+          priceImpactPct = ((effectivePrice - spotPrice) / spotPrice) * 100;
+        }
       } else {
+        const rawIn = amountNum * 1e9;
         const out = t.graduated
-          ? computeAmmSwap(t.virtualToken, t.virtualSol, amountNum * 1e9, 100)
-          : computeCurveSell(t.virtualSol, t.virtualToken, amountNum * 1e9);
+          ? computeSwapOutput(t.virtualToken, t.virtualSol, rawIn, 100)
+          : computeCurveSellOutput(t.virtualSol, t.virtualToken, rawIn, 100);
         outputEstimate = `~${(out / LAMPORTS_PER_SOL).toFixed(6)} SOL`;
         outputSolValue = formatUsd(out / LAMPORTS_PER_SOL * solUsd, 2);
+        if (out > 0) {
+          const spotPrice = t.virtualToken / t.virtualSol;
+          const effectivePrice = rawIn / out;
+          priceImpactPct = ((effectivePrice - spotPrice) / spotPrice) * 100;
+        }
       }
     }
 
     const quickAmounts = isBuy ? [0.1, 0.25, 0.5, 1] : [25, 50, 75, 100];
 
+    // Circular bonding arc values
+    const circumference = 2 * Math.PI * 18;
+    const arcOffset = circumference - (circumference * bondPct / 100);
+
     return (
-      <div key={t.mint} className="glass overflow-hidden">
-        {/* Token header — click to open swap */}
-        <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/3 transition"
-          onClick={() => openTrading(t.mint)}>
-          <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-gradient-to-br from-skye-500/20 to-emerald-500/20 flex items-center justify-center">
-            {t.image ? <img src={t.image} alt="" className="w-full h-full object-cover" /> :
-              <span className="font-pixel text-[9px] text-skye-400">{t.symbol.slice(0, 2)}</span>}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[15px] font-bold text-ink-primary">{t.name}</span>
-              <span className="text-[11px] text-ink-faint">${t.symbol}</span>
+      <div key={t.mint} className="album-card group">
+        {/* ── Album image area ── */}
+        <div className="album-img-wrap cursor-pointer" onClick={() => openTrading(t.mint)}>
+          {t.image ? (
+            <img src={t.image} alt={t.name} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center dot-grid">
+              <span className="font-pixel text-[24px] text-skye-400/30">{t.symbol.slice(0, 2)}</span>
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-ink-faint mt-0.5">
-              {!t.graduated && <span>{(t.realSol / 1e9).toFixed(2)} SOL</span>}
-              {mcSol > 0 && <span>MC {formatUsd(mcSol * solUsd, 0)}</span>}
+          )}
+
+          {/* Floating overlay on image */}
+          <div className="album-overlay">
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-[18px] font-bold text-white tracking-tight truncate">{t.name}</h3>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[12px] text-ink-secondary font-medium">${t.symbol}</span>
+                  {mcSol > 0 && <span className="text-[11px] text-ink-faint">MC {formatUsd(mcSol * solUsd, 0)}</span>}
+                </div>
+              </div>
+
+              {/* Bonding arc or graduated badge */}
+              {!t.graduated ? (
+                <div className="bond-arc flex-shrink-0">
+                  <svg width="44" height="44" viewBox="0 0 44 44">
+                    <circle className="bond-arc-bg" cx="22" cy="22" r="18" />
+                    <circle className="bond-arc-fill" cx="22" cy="22" r="18"
+                      stroke="url(#bond-grad)"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={arcOffset} />
+                    <defs><linearGradient id="bond-grad" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#34d399" />
+                    </linearGradient></defs>
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white">{Math.floor(bondPct)}%</span>
+                </div>
+              ) : (
+                <div className="grad-badge rounded-full text-[8px] font-pixel flex-shrink-0">
+                  <span className="text-purple-300 whitespace-nowrap">GRADUATED</span>
+                </div>
+              )}
             </div>
           </div>
-          <span className={`text-[12px] font-semibold ${isTrading ? "text-skye-400" : "text-ink-faint"}`}>
-            {isTrading ? "Close" : "Trade"}
-          </span>
         </div>
 
-        {/* Bonding curve progress OR graduated badge */}
-        {!t.graduated ? (
-          <div className="px-4 pb-2">
-            <div className="flex justify-between text-[10px] text-ink-faint mb-1">
-              <span>Bonding curve</span>
-              <span>{bondPct.toFixed(1)}% — {GRADUATION_SOL} SOL to graduate</span>
-            </div>
-            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500" style={{
-                width: `${Math.max(bondPct, 1)}%`,
-                background: "linear-gradient(90deg, #22c55e, #4ade80)",
-              }} />
-            </div>
+        {/* ── Card body ── */}
+        <div className="p-4 space-y-3">
+          {/* Quick info row */}
+          <div className="flex items-center justify-between">
+            {!t.graduated ? (
+              <span className="text-[11px] text-ink-faint">{(t.realSol / 1e9).toFixed(2)} SOL raised</span>
+            ) : (
+              <span className="text-[11px] text-ink-faint">AMM · Liquidity locked</span>
+            )}
+            <button onClick={() => openTrading(t.mint)}
+              className={`btn-glow px-4 py-1.5 rounded-full text-[11px] font-semibold border transition-all duration-300 ${
+                isTrading
+                  ? "bg-skye-500/10 border-skye-500/30 text-skye-400"
+                  : "bg-surface-2 border-white/[0.06] text-ink-secondary hover:text-white"
+              }`}>
+              {isTrading ? "Close" : "Trade"}
+            </button>
           </div>
-        ) : (
-          <div className="px-4 pb-2">
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="font-pixel text-[8px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded">GRADUATED</span>
-              <span className="text-ink-faint">Trading on AMM — liquidity locked</span>
-            </div>
-          </div>
-        )}
 
-        {/* Contract address */}
-        <div className="px-4 pb-3">
+          {/* Contract address */}
           <CopyableMint mint={t.mint} />
         </div>
 
-        {/* Swap panel */}
+        {/* Swap drawer */}
         {isTrading && (
-          <div className="px-4 pb-5 pt-2 border-t border-white/5 space-y-3">
+          <div className="px-4 pb-5 pt-3 border-t border-white/[0.06] space-y-3">
             {/* Socials */}
             {(t.twitter || t.telegram || t.website || t.discord) && (
               <div className="flex gap-3 text-[11px] flex-wrap">
-                {t.website && <a href={t.website} target="_blank" rel="noopener noreferrer" className="text-skye-400 hover:underline">Website</a>}
+                {t.website && <a href={safeUrl(t.website)} target="_blank" rel="noopener noreferrer" className="text-skye-400 hover:underline">Website</a>}
                 {t.twitter && <a href={`https://twitter.com/${t.twitter.replace("@","")}`} target="_blank" rel="noopener noreferrer" className="text-skye-400 hover:underline">Twitter</a>}
-                {t.telegram && <a href={t.telegram} target="_blank" rel="noopener noreferrer" className="text-skye-400 hover:underline">Telegram</a>}
-                {t.discord && <a href={t.discord} target="_blank" rel="noopener noreferrer" className="text-skye-400 hover:underline">Discord</a>}
+                {t.telegram && <a href={safeUrl(t.telegram)} target="_blank" rel="noopener noreferrer" className="text-skye-400 hover:underline">Telegram</a>}
+                {t.discord && <a href={safeUrl(t.discord)} target="_blank" rel="noopener noreferrer" className="text-skye-400 hover:underline">Discord</a>}
               </div>
             )}
             {t.description && <p className="text-[12px] text-ink-tertiary">{t.description}</p>}
 
             {/* Buy/Sell toggle */}
-            <div className="flex bg-white/5 rounded-xl p-1">
+            <div className="flex bg-surface-0 rounded-full p-1 border border-white/[0.04]">
               <button onClick={() => { setIsBuy(true); setAmount(""); setSwapResult(null); }}
-                className={`flex-1 py-2.5 text-[13px] font-semibold rounded-lg transition min-h-[44px] ${isBuy ? "bg-emerald-500/20 text-emerald-400" : "text-ink-faint"}`}>Buy</button>
+                className={`flex-1 py-2 text-[13px] font-semibold rounded-full transition-all duration-300 ${isBuy ? "bg-skye-500/[0.15] text-skye-400 shadow-sm" : "text-ink-faint hover:text-ink-secondary"}`}>Buy</button>
               <button onClick={() => { setIsBuy(false); setAmount(""); setSwapResult(null); }}
-                className={`flex-1 py-2.5 text-[13px] font-semibold rounded-lg transition min-h-[44px] ${!isBuy ? "bg-rose-500/20 text-rose-400" : "text-ink-faint"}`}>Sell</button>
+                className={`flex-1 py-2 text-[13px] font-semibold rounded-full transition-all duration-300 ${!isBuy ? "bg-rose-500/[0.12] text-rose-400 shadow-sm" : "text-ink-faint hover:text-ink-secondary"}`}>Sell</button>
             </div>
 
             {/* Balance row */}
@@ -385,17 +450,17 @@ export function DiscoverTab() {
                   }
                   setSwapResult(null);
                 }}
-                  className={`flex-1 py-1.5 text-[11px] font-semibold bg-white/5 rounded-lg text-ink-secondary transition ${!isBuy && holding <= 0 ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10"}`}>
+                  className={`flex-1 py-1.5 text-[11px] font-semibold bg-surface-0 border border-white/[0.06] rounded-full text-ink-secondary transition-all duration-200 ${!isBuy && holding <= 0 ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-2"}`}>
                   {isBuy ? `${q} SOL` : `${q}%`}
                 </button>
               ))}
             </div>
 
             {/* Amount input */}
-            <div className="bg-white/3 rounded-xl px-4 py-3">
+            <div className="glow-input card-inset rounded-2xl p-4">
               <div className="flex items-baseline gap-2">
                 <input type="number" placeholder="0.00" value={amount} onChange={e => { setAmount(e.target.value); setSwapResult(null); }}
-                  className="flex-1 bg-transparent text-[22px] font-bold text-ink-primary outline-none min-w-0" />
+                  className="flex-1 bg-transparent text-[26px] font-bold text-white outline-none min-w-0 tracking-tight" />
                 <span className="text-[13px] font-semibold text-ink-faint">{isBuy ? "SOL" : t.symbol}</span>
               </div>
               {isBuy && amountNum > 0 && <p className="text-[11px] text-ink-faint mt-1">{formatUsd(amountNum * solUsd, 2)}</p>}
@@ -403,10 +468,10 @@ export function DiscoverTab() {
 
             {/* Output estimate */}
             {outputEstimate && (
-              <div className="bg-white/5 rounded-xl px-4 py-3 flex justify-between items-center">
+              <div className="bg-surface-0 border border-white/[0.06] rounded-xl px-4 py-3 flex justify-between items-center">
                 <span className="text-[12px] text-ink-faint">You receive</span>
                 <div className="text-right">
-                  <span className="text-[14px] text-ink-primary font-semibold">{outputEstimate}</span>
+                  <span className="text-[14px] text-white font-semibold">{outputEstimate}</span>
                   {outputSolValue && <span className="text-[11px] text-ink-faint ml-2">({outputSolValue})</span>}
                 </div>
               </div>
@@ -420,11 +485,18 @@ export function DiscoverTab() {
               </div>
             )}
 
+            {/* Price impact warning */}
+            {priceImpactPct > 5 && (
+              <div className="bg-rose-500/8 border border-rose-500/15 rounded-xl px-3 py-2 text-[11px] text-rose-400 font-medium">
+                High price impact ({priceImpactPct.toFixed(1)}%). Consider a smaller trade.
+              </div>
+            )}
+
             {/* Swap button */}
             {publicKey ? (
               <button onClick={() => handleSwap(t)} disabled={swapPending || amountNum <= 0}
-                className={`w-full py-3.5 rounded-xl text-[14px] font-semibold text-white transition min-h-[48px] active:scale-[0.98] ${
-                  swapPending ? "bg-white/10 cursor-wait" : isBuy ? "bg-emerald-500/90 hover:bg-emerald-500" : "bg-rose-500/90 hover:bg-rose-500"
+                className={`btn-glow w-full py-3.5 rounded-2xl text-[14px] font-bold text-white transition-all duration-300 min-h-[48px] active:scale-[0.97] ${
+                  swapPending ? "bg-white/10 cursor-wait" : isBuy ? "bg-gradient-to-r from-skye-600 via-skye-500 to-emerald-500" : "bg-gradient-to-r from-rose-600 to-rose-500"
                 } disabled:opacity-40`}>
                 {swapPending ? "Confirming..." : isBuy ? `Buy ${t.symbol}` : `Sell ${t.symbol}`}
               </button>
@@ -452,46 +524,158 @@ export function DiscoverTab() {
     );
   }
 
+  function SortBtn({ k, label }: { k: SortKey; label: string }) {
+    const active = sortKey === k;
+    return (
+      <button onClick={() => toggleSort(k)} className={`flex items-center gap-1 ${active ? "text-skye-400" : "text-ink-faint"}`}>
+        {label}
+        <span className="flex flex-col text-[8px] leading-[8px]">
+          <span className={active && sortDir === "asc" ? "text-skye-400" : "text-ink-ghost"}>▲</span>
+          <span className={active && sortDir === "desc" ? "text-skye-400" : "text-ink-ghost"}>▼</span>
+        </span>
+      </button>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="glass p-4 text-center">
-        <h2 className="font-pixel text-[14px] sm:text-[16px] text-skye-400 tracking-wide">DISCOVER</h2>
-      </div>
+    <div className="space-y-4">
 
       {loading && (
-        <div className="glass p-8 text-center">
-          <div className="w-2 h-2 rounded-full bg-skye-400 animate-pulse mx-auto mb-3" />
-          <p className="font-pixel text-[9px] text-skye-400">SCANNING LAUNCHES...</p>
+        <div className="flex flex-col items-center py-16 gap-4">
+          <div className="relative w-10 h-10">
+            <div className="absolute inset-0 rounded-full border-2 border-skye-500/20 border-t-skye-400 animate-spin" />
+          </div>
+          <p className="font-pixel text-[8px] text-skye-400 tracking-[0.2em]">SCANNING LAUNCHES...</p>
         </div>
       )}
 
       {!loading && tokens.length === 0 && (
-        <div className="glass p-12 text-center">
-          <p className="text-[14px] text-ink-tertiary">No tokens launched yet. Be the first!</p>
+        <div className="glass p-16 text-center space-y-4">
+          <p className="text-[16px] text-white font-semibold">No tokens launched yet</p>
+          <p className="text-[14px] text-ink-faint">Be the first to create one</p>
         </div>
       )}
 
-      {/* Active tokens — still on bonding curve */}
-      {activeTokens.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-[12px] font-semibold text-ink-tertiary uppercase tracking-wider px-1">Bonding</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {activeTokens.map(renderTokenCard)}
+      {!loading && tokens.length > 0 && (
+        <>
+          {/* Filter bar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["all", "bonding", "graduated"] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg transition ${filter === f ? "bg-skye-500/20 text-skye-400" : "bg-white/5 text-ink-faint hover:bg-white/10"}`}>
+                {f === "all" ? `ALL (${tokens.length})` : f === "bonding" ? `BONDING (${activeTokens.length})` : `GRADUATED (${graduatedTokens.length})`}
+              </button>
+            ))}
+            <div className="flex-1" />
+            <button onClick={() => setViewMode(v => v === "table" ? "grid" : "table")}
+              className="px-3 py-1.5 text-[11px] font-semibold rounded-lg bg-white/5 text-ink-faint hover:bg-white/10 transition">
+              {viewMode === "table" ? "GRID" : "TABLE"}
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* Graduated tokens — trading on AMM */}
-      {graduatedTokens.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-[12px] font-semibold text-purple-400 uppercase tracking-wider px-1">Graduated</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {graduatedTokens.map(renderTokenCard)}
-          </div>
-        </div>
-      )}
+          {viewMode === "table" ? (
+            /* ── Table view ── */
+            <div className="glass overflow-x-auto p-4">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-white/5 text-ink-faint">
+                    <th className="text-left py-3 px-3 font-semibold">TOKEN</th>
+                    <th className="text-right py-3 px-3 font-semibold"><SortBtn k="mcap" label="MCAP" /></th>
+                    <th className="text-right py-3 px-3 font-semibold"><SortBtn k="progress" label="PROGRESS" /></th>
+                    <th className="text-right py-3 px-3 font-semibold"><SortBtn k="created" label="CREATED" /></th>
+                    <th className="text-left py-3 px-3 font-semibold">CREATOR</th>
+                    <th className="text-center py-3 px-3 font-semibold">STATUS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedTokens.map(t => {
+                    const price = t.virtualToken > 0 ? t.virtualSol / t.virtualToken : 0;
+                    const mcSol = price * 1e9;
+                    const progress = Math.min(100, (t.realSol / 1e9 / GRADUATION_SOL) * 100);
+                    const age = t.launchedAt > 0 ? formatAge(t.launchedAt) : "—";
+                    const isOpen = trading === t.mint;
 
-      <div className="h-2 rounded-full overflow-hidden" style={{ background: "repeating-linear-gradient(90deg, rgba(34,197,94,0.3) 0px, rgba(34,197,94,0.3) 4px, transparent 4px, transparent 8px)" }} />
+                    return (
+                      <tr key={t.mint} className="border-b border-white/[0.03] hover:bg-white/[0.02] cursor-pointer transition"
+                        onClick={() => openTrading(t.mint)}>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 bg-white/5">
+                              {t.image ? <img src={t.image} alt="" className="w-full h-full object-cover" /> :
+                                <div className="w-full h-full flex items-center justify-center text-[9px] text-ink-faint">{t.symbol.slice(0,2)}</div>}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-white text-[13px]">{t.name}</div>
+                              <div className="text-ink-faint text-[10px]">${t.symbol}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right text-white font-semibold tabular-nums">{formatUsd(mcSol * solUsd, 0)}</td>
+                        <td className="py-3 px-3 text-right">
+                          {t.graduated ? (
+                            <span className="text-purple-400 font-semibold">100%</span>
+                          ) : (
+                            <div className="flex items-center gap-2 justify-end">
+                              <span className="text-ink-faint tabular-nums">{progress.toFixed(1)}%</span>
+                              <div className="w-16 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full bg-skye-400" style={{ width: `${Math.max(progress, 2)}%` }} />
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right text-ink-faint tabular-nums">{age}</td>
+                        <td className="py-3 px-3">
+                          <span className="font-mono text-[10px] text-ink-faint">{t.creator ? t.creator.slice(0,4) + "..." + t.creator.slice(-4) : "—"}</span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {t.graduated
+                            ? <span className="px-2 py-0.5 rounded text-[9px] font-semibold bg-purple-500/20 text-purple-400">GRAD</span>
+                            : <span className="px-2 py-0.5 rounded text-[9px] font-semibold bg-skye-500/20 text-skye-400">LIVE</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* ── Grid view (existing cards) ── */
+            <div className="space-y-6">
+              {activeTokens.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 px-1">
+                    <div className="w-2 h-2 rounded-full bg-skye-400 breathe" />
+                    <h3 className="text-[14px] font-semibold text-white tracking-tight">Bonding</h3>
+                    <span className="text-[12px] text-ink-faint">{activeTokens.length}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 stagger-in">
+                    {activeTokens.map(renderTokenCard)}
+                  </div>
+                </div>
+              )}
+              {graduatedTokens.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 px-1">
+                    <div className="w-2 h-2 rounded-full bg-purple-400" />
+                    <h3 className="text-[14px] font-semibold text-white tracking-tight">Graduated</h3>
+                    <span className="text-[12px] text-ink-faint">{graduatedTokens.length}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {graduatedTokens.map(renderTokenCard)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Swap panel for selected token */}
+          {trading && (() => {
+            const t = tokens.find(x => x.mint === trading);
+            if (!t) return null;
+            return renderTokenCard(t);
+          })()}
+        </>
+      )}
     </div>
   );
 }
@@ -507,7 +691,7 @@ function CopyableMint({ mint }: { mint: string }) {
   }
   return (
     <button onClick={handleCopy}
-      className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-white/3 hover:bg-white/5 border border-white/5 rounded-lg transition-colors group">
+      className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-surface-0 hover:bg-surface-2 border border-white/[0.06] rounded-lg transition-all duration-200 group">
       <span className="font-mono text-[10px] text-ink-faint truncate">{mint}</span>
       <span className={`text-[10px] font-semibold flex-shrink-0 transition-colors ${copied ? "text-emerald-400" : "text-skye-400 group-hover:text-skye-300"}`}>
         {copied ? "Copied" : "Copy"}

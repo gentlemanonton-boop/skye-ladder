@@ -17,6 +17,9 @@ export const SKYE_MINT = new PublicKey(
   "5GtUWP1x4LpKjAzGBZg9sy9TbTqjY2bvJfgfC7aUmAfF"
 );
 export const WSOL_MINT = NATIVE_MINT;
+export const TREASURY_WALLET = new PublicKey(
+  "5j5J5sMhwURJv1bdufDUypt29FeRnfv8GLpv53Cy1oxs"
+);
 export const DECIMALS = 9;
 export const TOTAL_SUPPLY = 1_000_000_000;
 export const PRICE_SCALE = 1e18;

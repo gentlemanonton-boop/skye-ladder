@@ -310,20 +310,26 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
   if (!pool) return null;
 
   return (
-    <div className="glass overflow-hidden relative">
-      <div className="p-4 sm:p-5 space-y-2">
+    <div className="glass overflow-hidden relative p-5 sm:p-6">
+      <div className="space-y-3">
         {/* Take Initial Back */}
         {publicKey && hasPositions && initialBack.tokensRaw > 0 && (
-          <button onClick={handleInitialBack} disabled={pending}
-            className="w-full py-3.5 mb-2 rounded-xl bg-gradient-to-r from-skye-500 to-skye-600 hover:from-skye-600 hover:to-skye-700 text-white font-semibold text-[13px] sm:text-[14px] shadow-soft transition-all active:scale-[0.98] disabled:opacity-50 min-h-[48px]">
+          <button
+            onClick={handleInitialBack}
+            disabled={pending}
+            className="btn-glow w-full rounded-2xl bg-gradient-to-r from-skye-600 to-cyan-500 py-4 mb-1 text-white font-bold text-[14px] tracking-tight transition-all duration-250 active:scale-[0.98] disabled:opacity-50 min-h-[50px]"
+          >
             {pending ? "Confirming..." : `Take Initial Back (${initialBackSol.toFixed(4)} SOL · ${formatUsd(initialBackSol * solUsd, 2)})`}
           </button>
         )}
 
         {/* PAY row */}
-        <div className="bg-white/5 rounded-xl p-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-[12px] text-ink-tertiary">You pay</span>
+        <div className="glow-input card-inset rounded-2xl p-5">
+          <div className="flex justify-between items-center mb-3">
+            <div>
+              <p className="font-pixel text-[7px] text-ink-ghost tracking-[0.15em] uppercase mb-0.5">input</p>
+              <span className="text-[13px] text-ink-tertiary font-medium">You pay</span>
+            </div>
             {publicKey && payBal !== null && (
               <div className="flex items-center gap-2 text-[12px]">
                 {payToken.mint === SKYE_MINT.toBase58() ? (
@@ -331,34 +337,48 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
                 ) : (
                   <span className="text-ink-faint">{payBal < 1000 ? payBal.toFixed(4) : payBal.toLocaleString(undefined, {maximumFractionDigits: 2})} {payToken.symbol}</span>
                 )}
-                <button onClick={handleMax} className="text-skye-400 font-semibold hover:underline text-[11px]">MAX</button>
+                <button onClick={handleMax} className="text-skye-400 font-medium hover:text-skye-300 text-[11px] transition-all duration-250">Max</button>
               </div>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <input type="number" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)}
-              className="flex-1 text-[24px] sm:text-[28px] font-bold bg-transparent outline-none tabular-nums min-w-0" />
+            <input
+              type="number"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="flex-1 text-[30px] sm:text-[36px] font-bold bg-transparent outline-none tabular-nums min-w-0 tracking-tighter"
+            />
             <TokenButton token={payToken} onClick={() => setShowSelector("pay")} />
           </div>
           {payToken.mint === NATIVE_MINT.toBase58() && (
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-1.5 mt-3">
               {[0.5, 1, 2, 5].map(v => (
-                <button key={v} onClick={() => setAmount(v.toString())}
-                  className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg border transition-all ${
-                    amount === v.toString() ? "border-skye-500/40 bg-skye-500/15 text-skye-400" : "border-white/10 text-ink-tertiary hover:bg-white/5"
-                  }`}>{v} SOL</button>
+                <button
+                  key={v}
+                  onClick={() => setAmount(v.toString())}
+                  className={`flex-1 py-1.5 text-[11px] font-medium rounded-full transition-all duration-250 ${
+                    amount === v.toString()
+                      ? "bg-skye-500/15 text-skye-400 border border-skye-500/30"
+                      : "bg-surface-2 border border-white/[0.06] text-ink-faint hover:text-ink-tertiary hover:bg-surface-3 hover:border-skye-500/30 hover:bg-skye-500/[0.06]"
+                  }`}
+                >
+                  {v} SOL
+                </button>
               ))}
             </div>
           )}
           {amountNum > 0 && payToken.mint === NATIVE_MINT.toBase58() && (
-            <div className="text-[11px] text-ink-faint mt-1 tabular-nums">{formatUsd(amountNum * solUsd, 2)}</div>
+            <div className="text-[11px] text-ink-faint mt-2 tabular-nums">{formatUsd(amountNum * solUsd, 2)}</div>
           )}
         </div>
 
         {/* Flip */}
-        <div className="flex justify-center -my-1 relative z-10">
-          <button onClick={handleFlip}
-            className="w-9 h-9 rounded-full bg-[rgba(20,20,35,0.9)] border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors">
+        <div className="flex justify-center -my-1.5 relative z-10">
+          <button
+            onClick={handleFlip}
+            className="w-12 h-12 rounded-2xl bg-surface-1 border border-white/[0.08] flex items-center justify-center shadow-lg hover:shadow-glow-sm hover:border-skye-500/30 hover:rotate-180 transition-all duration-500"
+          >
             <svg className="w-4 h-4 text-ink-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
             </svg>
@@ -366,19 +386,22 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
         </div>
 
         {/* RECEIVE row */}
-        <div className="bg-white/5 rounded-xl p-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-[12px] text-ink-tertiary">You receive</span>
+        <div className="glow-input card-inset rounded-2xl p-5">
+          <div className="flex justify-between items-center mb-3">
+            <div>
+              <p className="font-pixel text-[7px] text-ink-ghost tracking-[0.15em] uppercase mb-0.5">output</p>
+              <span className="text-[13px] text-ink-tertiary font-medium">You receive</span>
+            </div>
             {publicKey && receiveBal !== null && (
               <span className="text-[12px] text-ink-faint">{receiveBal < 1000 ? receiveBal.toFixed(4) : receiveBal.toLocaleString(undefined, {maximumFractionDigits: 2})} {receiveToken.symbol}</span>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex-1 text-[24px] sm:text-[28px] font-bold tabular-nums min-w-0">
+            <div className="flex-1 text-[30px] sm:text-[36px] font-bold tabular-nums min-w-0 tracking-tighter">
               {quoteLoading ? (
                 <span className="text-ink-faint animate-pulse">...</span>
               ) : amountNum > 0 && outputHuman > 0 ? (
-                <span className="text-ink-secondary">
+                <span className="text-gradient">
                   {outputHuman < 0.001 ? outputHuman.toExponential(2) : outputHuman < 1 ? outputHuman.toFixed(6) : outputHuman.toLocaleString(undefined, { maximumFractionDigits: 4 })}
                 </span>
               ) : (
@@ -388,37 +411,42 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
             <TokenButton token={receiveToken} onClick={() => setShowSelector("receive")} />
           </div>
           {amountNum > 0 && outputHuman > 0 && receiveToken.mint === NATIVE_MINT.toBase58() && (
-            <div className="text-[11px] text-ink-faint mt-1 tabular-nums">{formatUsd(outputHuman * solUsd, 2)}</div>
+            <div className="text-[11px] text-ink-faint mt-2 tabular-nums">{formatUsd(outputHuman * solUsd, 2)}</div>
           )}
         </div>
 
-        {/* Sell % quick buttons (only for SKYE sell side) */}
+        {/* Sell % quick buttons */}
         {payToken.mint === SKYE_MINT.toBase58() && publicKey && maxSellableRaw > 0 && (
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-1.5 pt-0.5">
             {[{ l: "25%", p: 0.25 }, { l: "50%", p: 0.5 }, { l: "75%", p: 0.75 }, { l: "Max", p: 1 }].map(({ l, p }) => (
-              <button key={l} onClick={() => setAmount((Math.floor(maxSellableHuman * p * 10000) / 10000).toString())}
-                className="flex-1 py-2 text-[11px] font-semibold rounded-lg border border-white/10 text-ink-tertiary hover:bg-white/5 transition-all">{l}</button>
+              <button
+                key={l}
+                onClick={() => setAmount((Math.floor(maxSellableHuman * p * 10000) / 10000).toString())}
+                className="flex-1 py-1.5 text-[11px] font-medium rounded-full bg-surface-2 border border-white/[0.06] text-ink-faint hover:text-ink-tertiary hover:bg-surface-3 hover:border-skye-500/30 hover:bg-skye-500/[0.06] transition-all duration-250"
+              >
+                {l}
+              </button>
             ))}
           </div>
         )}
 
         {/* Route + price info */}
         {amountNum > 0 && (isQuoteReady || isCurveBuy || isCurveSell) && outputHuman > 0 && (
-          <div className="space-y-1 pt-1">
+          <div className="dot-grid rounded-xl px-4 py-3 space-y-2">
             {routeLabel && (
-              <div className="flex justify-between text-[12px]">
+              <div className="flex justify-between text-[13px]">
                 <span className="text-ink-faint">Route</span>
                 <span className="text-skye-400 font-medium">{routeLabel}</span>
               </div>
             )}
-            <div className="flex justify-between text-[12px]">
+            <div className="flex justify-between text-[13px]">
               <span className="text-ink-faint">Rate</span>
               <span className="text-ink-tertiary tabular-nums">
-                1 {payToken.symbol} ≈ {(outputHuman / amountNum).toLocaleString(undefined, { maximumFractionDigits: 6 })} {receiveToken.symbol}
+                1 {payToken.symbol} = {(outputHuman / amountNum).toLocaleString(undefined, { maximumFractionDigits: 6 })} {receiveToken.symbol}
               </span>
             </div>
             {priceImpactPct > 0 && (
-              <div className="flex justify-between text-[12px]">
+              <div className="flex justify-between text-[13px]">
                 <span className="text-ink-faint">Price impact</span>
                 <span className={`font-medium ${priceImpactPct > 5 ? "text-rose-400" : priceImpactPct > 2 ? "text-amber-400" : "text-ink-tertiary"}`}>
                   {priceImpactPct.toFixed(2)}%
@@ -426,40 +454,45 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
               </div>
             )}
             {(route === "jup_then_curve" || route === "curve_then_jup") && (
-              <div className="flex justify-between text-[12px]">
+              <div className="flex justify-between text-[13px]">
                 <span className="text-ink-faint">Steps</span>
-                <span className="text-ink-faint">2 transactions required</span>
+                <span className="text-ink-faint">2 transactions</span>
               </div>
             )}
           </div>
         )}
 
         {priceImpactPct > 5 && (
-          <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2 text-[12px] text-rose-400 font-medium">
+          <div className="bg-rose-500/8 border border-rose-500/15 rounded-2xl px-4 py-3 text-[13px] text-rose-400 font-medium">
             High price impact ({priceImpactPct.toFixed(1)}%). Consider a smaller trade.
           </div>
         )}
 
         {/* Submit */}
         {publicKey ? (
-          <button onClick={handleSubmit} disabled={pending || amountNum <= 0 || (needsJupQuote && !isQuoteReady)}
-            className={`w-full py-4 rounded-xl text-[14px] sm:text-[15px] font-semibold text-white transition-all active:scale-[0.98] min-h-[52px] ${
-              pending ? "bg-white/10 cursor-wait" : "bg-skye-500/90 hover:bg-skye-500"
-            } disabled:opacity-40`}>
+          <button
+            onClick={handleSubmit}
+            disabled={pending || amountNum <= 0 || (needsJupQuote && !isQuoteReady)}
+            className={`btn-glow w-full rounded-2xl py-4 text-[16px] font-bold tracking-tight text-white transition-all duration-250 active:scale-[0.98] min-h-[52px] ${
+              pending
+                ? "bg-white/8 cursor-wait text-ink-faint"
+                : "bg-gradient-to-r from-skye-600 via-skye-500 to-emerald-500"
+            } disabled:opacity-40`}
+          >
             {pending ? "Confirming..." : quoteLoading ? "Getting quote..." : amountNum > 0 && outputHuman > 0
               ? `Swap ${payToken.symbol} for ${receiveToken.symbol}`
               : amountNum > 0 && needsJupQuote && !isQuoteReady ? "No route found" : "Enter an amount"}
           </button>
         ) : (
-          <div className="text-center text-[13px] sm:text-[14px] text-ink-faint py-3">Connect wallet to trade</div>
+          <div className="text-center text-[13px] text-ink-faint py-3">Connect wallet to trade</div>
         )}
 
         {confirmedTx && (
-          <p className="text-center text-[12px] sm:text-[13px] text-emerald-400">
-            Confirmed &middot; <a href={`https://solscan.io/tx/${confirmedTx}`} target="_blank" rel="noopener noreferrer" className="underline">View on Solscan</a>
+          <p className="text-center text-[12px] text-emerald-400">
+            Confirmed · <a href={`https://solscan.io/tx/${confirmedTx}`} target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">View on Solscan</a>
           </p>
         )}
-        {error && <p className="text-center text-[11px] sm:text-[12px] text-rose-400 break-all">{error}</p>}
+        {error && <p className="text-center text-[11px] text-rose-400 break-all">{error}</p>}
       </div>
 
       {/* Token Selector */}
@@ -495,10 +528,12 @@ export function SwapPanel({ currentPrice, solUsd, pool, positions, solBalance, s
 
 function TokenButton({ token, onClick }: { token: SelectedToken; onClick: () => void }) {
   return (
-    <button onClick={onClick}
-      className="flex items-center gap-2 bg-white/10 hover:bg-white/15 rounded-xl px-3 py-2 transition-colors flex-shrink-0">
-      <img src={token.logo} alt={token.symbol} className="w-6 h-6 rounded-full" />
-      <span className="text-[14px] font-semibold text-ink-primary">{token.symbol}</span>
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 bg-surface-2 hover:bg-surface-3 border border-white/[0.08] rounded-full px-4 py-2.5 transition-all duration-250 flex-shrink-0"
+    >
+      <img src={token.logo} alt={token.symbol} className="w-5 h-5 rounded-full" />
+      <span className="text-[13px] font-semibold text-white">{token.symbol}</span>
       <svg className="w-3 h-3 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
       </svg>
@@ -610,50 +645,65 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
   }
 
   return (
-    <div className="absolute inset-0 z-50 bg-[rgba(5,5,15,0.95)] backdrop-blur-sm flex flex-col" ref={ref}>
-      <div className="p-4 border-b border-white/5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[14px] font-bold text-ink-primary">Select token</h3>
-          <button onClick={onClose} className="text-ink-faint hover:text-ink-primary text-[18px]">&times;</button>
+    <div className="absolute inset-0 z-50 bg-[#09090b] flex flex-col" ref={ref}>
+      <div className="p-4 border-b border-white/[0.06]">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[15px] font-semibold text-white tracking-tight">Select token</h3>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-ink-faint hover:text-white hover:bg-surface-2 transition-all duration-250 text-[18px]"
+          >
+            &times;
+          </button>
         </div>
-        <input ref={inputRef} type="text" placeholder="Search or paste contract address..."
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-white/5 rounded-xl px-3 py-2.5 text-[13px] outline-none placeholder:text-ink-faint border border-white/5 focus:border-skye-500/30" />
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Search or paste address..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full bg-surface-1 rounded-xl px-3.5 py-2.5 text-[13px] outline-none placeholder:text-ink-faint border border-white/[0.07] focus:border-skye-500/40 transition-all duration-250"
+        />
 
         {/* Pasted CA result */}
         {loadingMint && (
-          <div className="mt-2 px-3 py-2 text-[12px] text-ink-faint animate-pulse">Looking up mint...</div>
+          <div className="mt-3 px-3 py-2 text-[12px] text-ink-faint animate-pulse">Looking up mint...</div>
         )}
         {pastedToken && (
-          <button onClick={() => selectToken(pastedToken.mint, pastedToken.symbol, pastedToken.name, pastedToken.logo, pastedToken.decimals)}
-            className="mt-2 w-full flex items-center justify-between px-3 py-3 rounded-xl bg-skye-500/10 border border-skye-500/20 hover:bg-skye-500/20 transition-colors">
+          <button
+            onClick={() => selectToken(pastedToken.mint, pastedToken.symbol, pastedToken.name, pastedToken.logo, pastedToken.decimals)}
+            className="mt-3 w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-skye-500/[0.08] border border-skye-500/20 hover:bg-skye-500/[0.14] transition-all duration-250"
+          >
             <div className="flex items-center gap-3">
               {pastedToken.logo ? (
-                <img src={pastedToken.logo} alt={pastedToken.symbol} className="w-8 h-8 rounded-full" />
+                <img src={pastedToken.logo} alt={pastedToken.symbol} className="w-9 h-9 rounded-full" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-ink-tertiary">
+                <div className="w-9 h-9 rounded-full bg-surface-3 flex items-center justify-center text-[10px] font-semibold text-ink-faint">
                   {pastedToken.symbol.slice(0, 2)}
                 </div>
               )}
               <div className="text-left">
-                <div className="text-[13px] font-semibold text-ink-primary">{pastedToken.name}</div>
+                <div className="text-[13px] font-semibold text-white">{pastedToken.name}</div>
                 <div className="text-[11px] text-ink-faint font-mono">{pastedToken.mint.slice(0, 6)}...{pastedToken.mint.slice(-4)}</div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[12px] font-semibold text-ink-primary">{pastedToken.symbol}</div>
+              <div className="text-[12px] font-semibold text-white">{pastedToken.symbol}</div>
               <div className="text-[11px] text-skye-400 font-semibold">Select</div>
             </div>
           </button>
         )}
 
         {/* Common tokens quick select */}
-        <div className="flex gap-2 mt-3">
+        <div className="flex gap-2 mt-4">
           {COMMON_TOKENS.map(t => (
-            <button key={t.mint} onClick={() => selectToken(t.mint, t.symbol, t.name, t.logo, t.decimals)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-colors">
+            <button
+              key={t.mint}
+              onClick={() => selectToken(t.mint, t.symbol, t.name, t.logo, t.decimals)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-2 hover:bg-surface-3 border border-white/[0.06] transition-all duration-250"
+            >
               <img src={t.logo} alt={t.symbol} className="w-4 h-4 rounded-full" />
-              <span className="text-[12px] font-semibold text-ink-primary">{t.symbol}</span>
+              <span className="text-[12px] font-semibold text-white">{t.symbol}</span>
             </button>
           ))}
         </div>
@@ -662,17 +712,19 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
       <div className="flex-1 overflow-y-auto p-2">
         {/* SOL */}
         {(!search || "sol solana".includes(search.toLowerCase())) && (
-          <button onClick={() => selectToken(SOL_TOKEN.mint, "SOL", "Solana", SOL_LOGO, 9)}
-            className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/5 transition-colors">
+          <button
+            onClick={() => selectToken(SOL_TOKEN.mint, "SOL", "Solana", SOL_LOGO, 9)}
+            className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-surface-1 hover:-translate-x-1 transition-all duration-250"
+          >
             <div className="flex items-center gap-3">
               <img src={SOL_LOGO} alt="SOL" className="w-8 h-8 rounded-full" />
               <div className="text-left">
-                <div className="text-[13px] font-semibold text-ink-primary">SOL</div>
+                <div className="text-[13px] font-semibold text-white">SOL</div>
                 <div className="text-[11px] text-ink-faint">Solana</div>
               </div>
             </div>
             <div className="text-right tabular-nums">
-              <div className="text-[13px] font-semibold text-ink-primary">{solBalance?.toFixed(4) ?? "0"}</div>
+              <div className="text-[13px] font-semibold text-white">{solBalance?.toFixed(4) ?? "0"}</div>
               {solUsdVal > 0 && <div className="text-[11px] text-ink-faint">${solUsdVal.toFixed(2)}</div>}
             </div>
           </button>
@@ -682,24 +734,26 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
         {filtered.map(token => {
           const t = COMMON_TOKENS.find(c => c.mint === token.mint);
           return (
-            <button key={token.mint}
+            <button
+              key={token.mint}
               onClick={() => selectToken(token.mint, token.symbol, token.name, token.logo || "", token.decimals)}
-              className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-white/5 transition-colors">
+              className="w-full flex items-center justify-between px-3 py-3 rounded-xl hover:bg-surface-1 hover:-translate-x-1 transition-all duration-250"
+            >
               <div className="flex items-center gap-3">
                 {token.logo ? (
                   <img src={token.logo} alt={token.symbol} className="w-8 h-8 rounded-full" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold text-ink-tertiary">
+                  <div className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center text-[10px] font-semibold text-ink-faint">
                     {token.symbol.slice(0, 2)}
                   </div>
                 )}
                 <div className="text-left">
-                  <div className="text-[13px] font-semibold text-ink-primary">{token.symbol}</div>
+                  <div className="text-[13px] font-semibold text-white">{token.symbol}</div>
                   <div className="text-[11px] text-ink-faint">{token.name}</div>
                 </div>
               </div>
               <div className="text-right tabular-nums">
-                <div className="text-[13px] font-semibold text-ink-primary">{token.uiAmount}</div>
+                <div className="text-[13px] font-semibold text-white">{token.uiAmount}</div>
               </div>
             </button>
           );
@@ -712,10 +766,12 @@ function TokenSelector({ allTokens, solBalance, solUsd, onSelect, onClose, side 
 
       {/* Dust toggle */}
       {dustCount > 0 && (
-        <div className="p-3 border-t border-white/5">
-          <button onClick={() => setShowDust(!showDust)}
-            className="w-full flex items-center justify-center gap-2 py-2 text-[12px] text-ink-faint hover:text-ink-tertiary transition-colors">
-            <div className={`w-3.5 h-3.5 rounded border transition-colors flex items-center justify-center ${showDust ? "bg-skye-500 border-skye-500" : "border-white/20"}`}>
+        <div className="p-3 border-t border-white/[0.06]">
+          <button
+            onClick={() => setShowDust(!showDust)}
+            className="w-full flex items-center justify-center gap-2 py-2 text-[12px] text-ink-faint hover:text-ink-tertiary transition-all duration-250"
+          >
+            <div className={`w-3.5 h-3.5 rounded border transition-all duration-250 flex items-center justify-center ${showDust ? "bg-skye-500 border-skye-500" : "border-white/20"}`}>
               {showDust && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
             </div>
             Show dust ({dustCount} unknown tokens)
