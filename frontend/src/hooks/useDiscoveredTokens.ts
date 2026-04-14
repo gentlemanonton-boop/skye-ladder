@@ -199,10 +199,9 @@ async function doFetch(connection: Connection): Promise<DiscoveredTokenBase[]> {
     });
   }
 
-  // 5) Enrich with on-chain Metaplex metadata. fetchMetadataForMints
-  //    has its own in-memory + localStorage cache so this is cheap on
-  //    repeat calls.
+  // 5) Enrich with on-chain Metaplex metadata + Vercel Blob fallback.
   if (results.length > 0) {
+    // First try Metaplex on-chain metadata
     try {
       const meta = await fetchMetadataForMints(connection, results.map(r => r.mint));
       for (const t of results) {
@@ -213,7 +212,25 @@ async function doFetch(connection: Connection): Promise<DiscoveredTokenBase[]> {
         if (m.symbol && (!t.symbol || t.symbol === "???")) t.symbol = m.symbol;
         if (m.description && !t.description) t.description = m.description;
       }
-    } catch { /* enrichment is best-effort */ }
+    } catch { /* best-effort */ }
+
+    // Fallback: fetch from Vercel Blob API for tokens still missing data
+    const needsEnrichment = results.filter(
+      t => !t.image || !t.name || t.name === t.mint.slice(0, 6) + "..." || t.symbol === "???"
+    );
+    if (needsEnrichment.length > 0) {
+      await Promise.allSettled(needsEnrichment.map(async t => {
+        try {
+          const res = await fetch(`/api/token-metadata?mint=${t.mint}`);
+          if (!res.ok) return;
+          const m = await res.json();
+          if (m.image && !t.image) t.image = m.image;
+          if (m.name && (!t.name || t.name === t.mint.slice(0, 6) + "...")) t.name = m.name;
+          if (m.symbol && (!t.symbol || t.symbol === "???")) t.symbol = m.symbol;
+          if (m.description && !t.description) t.description = m.description;
+        } catch { /* best-effort */ }
+      }));
+    }
   }
 
   return results;
