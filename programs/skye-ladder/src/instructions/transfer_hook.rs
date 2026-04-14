@@ -132,37 +132,12 @@ fn read_token_account_owner(token_account: &AccountInfo) -> Result<Pubkey> {
 /// / `receiver_wallet_record` based only on the off-chain ExtraAccountMetaList
 /// resolution — defense-in-depth requires the program itself to enforce it.
 ///
-/// Optimization: for initialized accounts, reads the stored bump and uses
-/// `create_program_address` (one hash) instead of `find_program_address`
-/// (up to 256 hashes). Falls back to `find_program_address` for
-/// uninitialized accounts where no bump is stored yet.
 fn validate_wallet_pda(
     account: &AccountInfo,
     owner: &Pubkey,
     mint: &Pubkey,
     program_id: &Pubkey,
 ) -> Result<()> {
-    // Try the fast path: read bump from the last byte of an initialized
-    // WalletRecord. Anchor layout: 8-byte discriminator + borsh fields,
-    // with `bump: u8` as the very last field.
-    let data = account.try_borrow_data()?;
-    if data.len() > 8 {
-        // bump is the last byte of the serialized WalletRecord
-        let bump = data[data.len() - 1];
-        drop(data); // release borrow before calling create_program_address
-        if let Ok(expected) = Pubkey::create_program_address(
-            &[b"wallet", owner.as_ref(), mint.as_ref(), &[bump]],
-            program_id,
-        ) {
-            require_keys_eq!(*account.key, expected, SkyeLadderError::InvalidWalletRecord);
-            return Ok(());
-        }
-        // If create_program_address fails (bad bump), fall through to find_program_address
-    } else {
-        drop(data);
-    }
-
-    // Slow path: uninitialized account or invalid stored bump
     let (expected, _bump) = Pubkey::find_program_address(
         &[b"wallet", owner.as_ref(), mint.as_ref()],
         program_id,
