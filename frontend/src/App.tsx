@@ -66,30 +66,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen relative">
-      {/* ─── Background layers ─── */}
-      <div className="reactive-grid">
-        <div className="reactive-grid-inner" />
+      {/* ─── Background layers (desktop only — too expensive on mobile) ─── */}
+      <div className="hidden lg:block">
+        <div className="reactive-grid">
+          <div className="reactive-grid-inner" />
+        </div>
+        <div className="light-beam" />
+        <div className="particles" aria-hidden="true">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div
+              key={i}
+              className="particle"
+              style={{
+                left: `${(i * 5.3 + 2) % 100}%`,
+                animationDuration: `${8 + (i % 7) * 2.5}s`,
+                animationDelay: `${(i * 1.3) % 10}s`,
+                // @ts-ignore
+                '--drift': `${(i % 2 === 0 ? 1 : -1) * (10 + i % 15)}px`,
+              } as React.CSSProperties}
+            />
+          ))}
+        </div>
+        <FloatingMemes />
       </div>
-      <div className="light-beam" />
       <div className="vignette" />
-      <div className="particles" aria-hidden="true">
-        {Array.from({ length: 20 }).map((_, i) => (
-          <div
-            key={i}
-            className="particle"
-            style={{
-              left: `${(i * 5.3 + 2) % 100}%`,
-              animationDuration: `${8 + (i % 7) * 2.5}s`,
-              animationDelay: `${(i * 1.3) % 10}s`,
-              // @ts-ignore
-              '--drift': `${(i % 2 === 0 ? 1 : -1) * (10 + i % 15)}px`,
-            } as React.CSSProperties}
-          />
-        ))}
-      </div>
-
-      {/* ─── Floating Memes ─── */}
-      <FloatingMemes />
 
       {/* ─── Header ─── */}
       <header className="sticky top-0 z-20 frost" style={{ borderRadius: 0 }}>
